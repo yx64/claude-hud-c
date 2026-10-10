@@ -40,7 +40,7 @@ One refresh, median (p50) and 90th percentile in ms:
 claude-hud's time grows with the transcript, because it parses the whole file on every refresh; claude-hud-c's barely
 moves.
 
-Measured on Windows 11, Intel Core i7-10700, claude-hud 0.10.0 on node 24.21.0, Git Bash's sh, git status display off;
+Measured on Windows, claude-hud 0.10.0 on node 24.21.0, Git Bash's sh, git status display off;
 40 rounds with the three forms alternated, CPU load 8% before and after; the two sh outputs were identical apart from
 the run time claude-hud-c appends. To reproduce: `test/Measure-HudLatency.ps1` (Windows).
 
@@ -57,7 +57,10 @@ how to call it.
 
 Known gaps, where claude-hud-c renders English or an approximation instead:
 
-- UI languages other than English;
+- claude-hud's `language` option: only English is implemented, whatever it is set to. This is deliberate: the status
+  line carries only a handful of words, too few to justify the extra machinery. Anyone who wants another language is
+  welcome to add it; the strings sit in one table in `src/render.c`, and the output has to match claude-hud's own
+  translation;
 - `--extra-cmd` (Claude Code's `statusLine` cannot pass arguments anyway);
 - a few inputs where claude-hud depends on node's locale data or throws, such as a system locale other than en-US or
   zh-CN, or a Windows path that is not drive-absolute. The source marks each one `UNSUPPORTED("<Reason>")`.
@@ -88,7 +91,8 @@ earlier build wrote and replaces them as it goes.
 
 ## Platforms
 
-- **Windows**: the primary platform. No C runtime is linked; the executable imports from `KERNEL32.dll` only.
+- **Windows**: the primary platform, Windows 10 or later. No C runtime is linked; the executable imports from
+  `KERNEL32.dll` only.
 - **Linux**: builds on the C library; tested under WSL2. Correct output, not tuned for start-up time.
 - **macOS**: the code is written but has not been run on a Mac.
 
