@@ -96,15 +96,24 @@ earlier build wrote and replaces them as it goes.
 
 ## Platforms
 
+Windows, Linux and macOS, each on x64 and arm64. CI builds all six and runs the tests on each, on a machine of that
+architecture.
+
 - **Windows**: the primary platform, Windows 10 or later. No C runtime is linked; the executable imports from
   `KERNEL32.dll` only.
-- **Linux**: builds on the C library; tested under WSL2. Correct output, not tuned for start-up time.
-- **macOS**: the code is written but has not been run on a Mac.
+- **Linux**: builds on the C library; correct output, not tuned for start-up time. The prebuilt executables need
+  glibc 2.38 or later (Ubuntu 24.04, Debian 13 and later).
+- **macOS**: 11 or later. Tested in CI only; no one has used it day to day on a Mac yet.
 
 ## Install
 
-There are no prebuilt binaries; build from source. You need CMake 3.28 or later, Ninja, and clang with C23
-support and lld (clang 18 is too old). Neither node nor claude-hud is needed to build, test or run it.
+Prebuilt executables are on the [Releases](https://github.com/yx64/claude-hud-c/releases) page, one file per
+platform, not archived: `claude-hud-c-<Os>-<Arch>`, with `.exe` on Windows. `SHA256SUMS` beside them lists their
+checksums. On Linux and macOS, make the downloaded file executable with `chmod +x`; on macOS a file downloaded through
+a browser is also quarantined, which `xattr -d com.apple.quarantine <File>` lifts.
+
+To build from source you need CMake 3.28 or later, Ninja, and clang with C23 support and lld (clang 18 is too old).
+Neither node nor claude-hud is needed to build, test or run it.
 
 ```
 git clone https://github.com/yx64/claude-hud-c
@@ -116,8 +125,9 @@ The build runs the tests as well and fails when one fails. It prints one summary
 `tests: 424/424 passed (...)`, or a `FAIL` line per failed check with where the output differs. To build without
 them, configure with `-DHUD_TEST_AFTER_BUILD=OFF`; `ctest --test-dir <BuildDir>` runs them at any time.
 
-Copy `<BuildDir>/release/claude-hud-c.exe` (`claude-hud-c` off Windows) to a directory that is not on `PATH`, such as
-`~/.local/tools/`, and point `statusLine` in the user-level `~/.claude/settings.json` at it:
+Copy the executable, downloaded or built (`<BuildDir>/release/claude-hud-c.exe`, `claude-hud-c` off Windows), to a
+directory that is not on `PATH`, such as `~/.local/tools/`, and point `statusLine` in the user-level
+`~/.claude/settings.json` at it:
 
 ```json
 "statusLine": { "type": "command", "command": "~/.local/tools/claude-hud-c.exe" }
