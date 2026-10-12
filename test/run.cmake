@@ -178,7 +178,7 @@ function(refresh case dir)
   endif()
 
   execute_process(COMMAND ${R_COMMAND} INPUT_FILE ${dir}/stdin.json OUTPUT_FILE ${dir}/stdout ERROR_VARIABLE e
-                  RESULT_VARIABLE c WORKING_DIRECTORY ${dir}/proj)
+                  RESULT_VARIABLE c WORKING_DIRECTORY ${dir}/proj TIMEOUT ${HUD_RUN_TIMEOUT})
   hud_canon(${dir}/stdout ${out}.out problem)
 
   set(written ${dir}/claude/plugins/claude-hud)

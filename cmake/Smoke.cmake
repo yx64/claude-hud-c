@@ -71,6 +71,9 @@ file(WRITE ${stdin} "{\"session_id\":\"smoke\",\"transcript_path\":\"${transcrip
 
 # The ledger is put back after every run, so each run starts from the same state.
 set(ledger ${CONFIG_DIR}/plugins/claude-hud/daily-cost.json)
+# Seconds one refresh may run. It takes milliseconds; one still running after this is hung, and execute_process
+# ends it and reports a timeout as its result, which fails the check that reads it.
+set(refresh_timeout 60)
 function(refresh exe out_var code_var)
   set(had_ledger FALSE)
   if(EXISTS ${ledger})
@@ -80,7 +83,7 @@ function(refresh exe out_var code_var)
   execute_process(
     COMMAND ${CMAKE_COMMAND} -E env --unset=HUD_FAKE_NOW_MS --unset=HUD_FAKE_MEM --unset=HUD_CACHE_DIR --unset=COLUMNS
             CLAUDE_CONFIG_DIR=${CONFIG_DIR} TMP=${WORK}/tmp TEMP=${WORK}/tmp TMPDIR=${WORK}/tmp ${exe}
-    INPUT_FILE ${stdin} OUTPUT_VARIABLE out ERROR_VARIABLE err RESULT_VARIABLE code)
+    INPUT_FILE ${stdin} OUTPUT_VARIABLE out ERROR_VARIABLE err RESULT_VARIABLE code TIMEOUT ${refresh_timeout})
   if(had_ledger)
     file(COPY_FILE ${WORK}/ledger.saved ${ledger})
   endif()

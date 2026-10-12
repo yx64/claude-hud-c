@@ -146,6 +146,10 @@ endfunction()
 set(HUD_ENV_KEEP PATH SYSTEMROOT SYSTEMDRIVE WINDIR COMSPEC PATHEXT TEMP TMP TMPDIR)
 set(HUD_PATH0 "$ENV{PATH}")
 
+# How long any one process a test starts may run, in seconds. A refresh or a git call takes milliseconds; one
+# still running after this is hung, and execute_process ends it and reports a timeout as its result.
+set(HUD_RUN_TIMEOUT 60)
+
 # Unsets every variable not kept, then sets the ones every refresh gets for the work directory <Dir>.
 function(hud_env_reset dir)
   execute_process(COMMAND ${CMAKE_COMMAND} -E environment OUTPUT_VARIABLE all COMMAND_ERROR_IS_FATAL ANY)
@@ -168,6 +172,8 @@ function(hud_env_reset dir)
   set(ENV{HUD_FAKE_NOW_MS} ${HUD_NOW_MS})
   set(ENV{HUD_FAKE_MEM} ${HUD_MEM})
   set(ENV{GIT_CONFIG_NOSYSTEM} 1)
+  # git fails instead of prompting for credentials, which would hang a test with no one to answer.
+  set(ENV{GIT_TERMINAL_PROMPT} 0)
   file(TO_NATIVE_PATH "${BIN}/fake-jj" jj)
   set(ENV{PATH} "${jj}${HUD_PATH_SEP}${HUD_PATH0}")
   file(MAKE_DIRECTORY ${dir}/claude ${dir}/home ${dir}/proj)

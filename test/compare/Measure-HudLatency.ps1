@@ -18,10 +18,10 @@
 
 .PARAMETER Transcript
     Session transcript to refresh against, such as
-    <UserHome>\.claude\projects\<ProjectDirName>\<SessionId>.jsonl.
+    <UserHome>\.claude\projects\<ProjectDirName>\<SessionId>.jsonl. Required.
 
 .PARAMETER HudExe
-    The release build to time, in the form <Drive>:\<Dir>\<ProjectName>.exe.
+    The release build to time, in the form <Drive>:\<Dir>\<ProjectName>.exe. Required.
 
 .PARAMETER Rounds
     Measured rounds; one warm-up round is added and discarded.
@@ -41,8 +41,8 @@
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$Transcript,
-    [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$HudExe,
+    [ValidateNotNullOrEmpty()][string]$Transcript,
+    [ValidateNotNullOrEmpty()][string]$HudExe,
     [ValidateRange(1, 1000)][int]$Rounds = 30,
     [string]$UpstreamDir
 )
@@ -50,6 +50,16 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
+
+# Checked by hand rather than through Mandatory, which prompts and hangs a non-interactive caller.
+foreach ($name in 'Transcript', 'HudExe') {
+    if (-not $PSBoundParameters.ContainsKey($name)) {
+        throw "Missing parameter -${name}. Example: .\Measure-HudLatency.ps1 -Transcript <SessionTranscript> -HudExe <ReleaseBuild>"
+    }
+}
+
+# How long one refresh may run. They take milliseconds; one still running after this is hung.
+$refreshTimeoutMs = 30000
 
 $Transcript = (Resolve-Path -LiteralPath $Transcript).ProviderPath
 $HudExe = (Resolve-Path -LiteralPath $HudExe).ProviderPath
@@ -89,13 +99,20 @@ function Invoke-Timed([string]$Exe, [string]$Arguments) {
     $sw = [Diagnostics.Stopwatch]::StartNew()
     $p = [Diagnostics.Process]::Start($psi)
     $err = $p.StandardError.ReadToEndAsync()
+    $out = $p.StandardOutput.ReadToEndAsync()
     $p.StandardInput.Write($stdin)
     $p.StandardInput.Close()
-    $out = $p.StandardOutput.ReadToEnd()
-    $p.WaitForExit()
+    if (-not $p.WaitForExit($refreshTimeoutMs)) {
+        $p.Kill($true)
+        throw "$Exe $Arguments did not exit within $($refreshTimeoutMs / 1000) s; killed"
+    }
+    # Waits for the streams to close as well: the timed span ends where the caller sees all the output.
+    if (-not [Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]@($out, $err), $refreshTimeoutMs)) {
+        throw "$Exe $Arguments exited, but its output pipes stayed open for $($refreshTimeoutMs / 1000) s"
+    }
     $sw.Stop()
     if ($p.ExitCode) { throw "$Exe $Arguments exited with $($p.ExitCode): $($err.Result)" }
-    [pscustomobject]@{ Ms = $sw.Elapsed.TotalMilliseconds; Out = $out }
+    [pscustomobject]@{ Ms = $sw.Elapsed.TotalMilliseconds; Out = $out.Result }
 }
 
 function Get-Load { [math]::Round((Get-CimInstance Win32_Processor | Measure-Object LoadPercentage -Average).Average) }

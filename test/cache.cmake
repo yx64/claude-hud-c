@@ -137,7 +137,7 @@ function(check label transcript)
     list(GET side 0 s)
     list(GET side 1 exe)
     execute_process(COMMAND ${exe} INPUT_FILE ${dir}/stdin.json OUTPUT_FILE ${dir}/${s}.out ERROR_VARIABLE err_${s}
-                    RESULT_VARIABLE code_${s} WORKING_DIRECTORY ${dir}/proj)
+                    RESULT_VARIABLE code_${s} WORKING_DIRECTORY ${dir}/proj TIMEOUT ${HUD_RUN_TIMEOUT})
     string(STRIP "${err_${s}}" err_${s})
   endforeach()
   execute_process(COMMAND ${CMAKE_COMMAND} -E compare_files ${dir}/resumed.out ${dir}/full.out RESULT_VARIABLE differ)
