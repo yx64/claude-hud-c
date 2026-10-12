@@ -24,6 +24,8 @@ jobs:
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
+    # A whole run takes a few minutes; anything that hangs ends here instead of at the 6-hour default.
+    timeout-minutes: 30
     strategy:
       # One target failing does not stop the others, so a run shows every platform's result at once.
       fail-fast: false
@@ -53,6 +55,24 @@ jobs:
           if (-not (Test-Path -LiteralPath $clang)) { throw "no LLVM at $clang" }
           & $clang --version
           Add-Content -LiteralPath $env:GITHUB_ENV -Value "HUD_CC=$($clang.Replace('\', '/'))"
+
+      # The images register a just-in-time debugger, which turns a crash into a process that waits for
+      # someone to answer a dialog. Without it, and without Windows Error Reporting's UI, a crashing test
+      # build exits with its exception code, and the test reports it.
+      - name: Crashes exit (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          foreach ($key in 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AeDebug',
+                           'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows NT\CurrentVersion\AeDebug') {
+            if ((Test-Path -LiteralPath $key) -and (Get-ItemProperty -LiteralPath $key).PSObject.Properties['Debugger']) {
+              Remove-ItemProperty -LiteralPath $key -Name Debugger
+              Write-Output "removed the debugger registered under $key"
+            }
+          }
+          $wer = 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting'
+          New-ItemProperty -LiteralPath $wer -Name DontShowUI -Value 1 -PropertyType DWord -Force | Out-Null
 
       # The newest clang in the image's own packages; lld is a separate package.
       - name: Toolchain (Linux)
@@ -96,8 +116,9 @@ jobs:
         run: cmake --build build
 
       # Quiet unless something fails; then the FAIL lines name the group, the case and where the output differs.
+      # The slowest group takes seconds; the timeout turns a hang into a failure that names the group.
       - name: Test
-        run: ctest --test-dir build --output-on-failure
+        run: ctest --test-dir build --output-on-failure --timeout 300
 
       # What a downloaded executable asks of the machine it runs on: the newest glibc symbol version on Linux,
       # the minimum macOS version on macOS.
