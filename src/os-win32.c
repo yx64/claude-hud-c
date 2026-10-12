@@ -20,8 +20,13 @@ static us wus(const wchar_t *p, size_t n) { return (us){(const uint16_t *)p, (in
 
 // ---- process ----
 
-// The process entry, in place of the CRT's (see crt.c).
-[[noreturn]] void hud_start(void) { ExitProcess((UINT)hud_main()); }
+// The process entry, in place of the CRT's (see crt.c). No crash or critical-error dialog: Claude
+// Code waits on each refresh, and nobody is there to dismiss one. Children do not inherit this
+// (CREATE_DEFAULT_ERROR_MODE in os_run).
+[[noreturn]] void hud_start(void) {
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+    ExitProcess((UINT)hud_main());
+}
 
 [[noreturn]] void os_exit(int code) { ExitProcess((UINT)code); }
 
@@ -567,7 +572,8 @@ int os_run(us exe, const char *const *args, us cwd, const char *const *env, uint
     si.dwFlags = STARTF_USESTDHANDLES;
     si.hStdInput = nul, si.hStdOutput = wr, si.hStdError = nul;
     PROCESS_INFORMATION pi;
-    bool started = CreateProcessW(wz(exe), cmd, nullptr, nullptr, TRUE, CREATE_SUSPENDED | CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT,
+    bool started = CreateProcessW(wz(exe), cmd, nullptr, nullptr, TRUE,
+                                  CREATE_SUSPENDED | CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT | CREATE_DEFAULT_ERROR_MODE,
                                   env[0] ? env_block(env) : nullptr, wz(cwd), &si, &pi);
     CloseHandle(wr);
     CloseHandle(nul);
