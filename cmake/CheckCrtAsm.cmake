@@ -1,23 +1,44 @@
-# Fails unless every call, jmp and conditional jump in the assembly of src/crt.c goes to a local label (.L...)
-# or through the import table (*__imp_<Name>(%rip)). Anything else could lead back into the calling function:
-# the compiler may turn a loop inside memset into a call to memset. Usage:
+# Fails unless every call and jump in the assembly of src/crt.c goes to a local label (.L...) or through the
+# import table. Anything else could lead back into the calling function: the compiler may turn a loop inside
+# memset into a call to memset. Usage:
 #   cmake -DASM=<AsmFile> -P CheckCrtAsm.cmake
+# x86-64: call, jmp and conditional jumps; an import is called as *__imp_<Name>(%rip).
+# ARM64: b, b.<Cond>, bl, cbz, cbnz, tbz, tbnz take a label; br and blr take a register, which must have been
+# loaded from an import (ldr <Reg>, [<Reg>, :lo12:__imp_<Name>]) earlier in the same function.
+# The two sets of mnemonics do not overlap, so both are checked whatever the file holds.
 if(NOT DEFINED ASM)
   message(FATAL_ERROR "CheckCrtAsm.cmake: pass -DASM=<AsmFile>")
 endif()
 file(STRINGS ${ASM} lines)
 set(functions 0)
 set(fn "")
+set(import_regs "")
 foreach(line IN LISTS lines)
+  set(bad FALSE)
   if(line MATCHES "^([A-Za-z_][A-Za-z0-9_]*):")
     set(fn ${CMAKE_MATCH_1})
+    set(import_regs "")
     math(EXPR functions "${functions} + 1")
   elseif(line MATCHES "^[ \t]*(rex64[ \t]+)?(call[a-z]*|j[a-z]+)[ \t]+([^ \t]+)")
-    set(target ${CMAKE_MATCH_3})
-    if(NOT target MATCHES "^(\\.L[A-Za-z0-9_]+|\\*__imp_[A-Za-z0-9_]+\\(%rip\\))$")
-      string(STRIP "${line}" line)
-      message(FATAL_ERROR "crt.c: ${fn} jumps out of the function (${line}), possibly into itself: ${ASM}")
+    if(NOT CMAKE_MATCH_3 MATCHES "^(\\.L[A-Za-z0-9_]+|\\*__imp_[A-Za-z0-9_]+\\(%rip\\))$")
+      set(bad TRUE)
     endif()
+  elseif(line MATCHES "^[ \t]*ldr[ \t]+(x[0-9]+),[ \t]*\\[x[0-9]+,[ \t]*:lo12:__imp_[A-Za-z0-9_]+\\]")
+    list(APPEND import_regs ${CMAKE_MATCH_1})
+  elseif(line MATCHES "^[ \t]*(b|bl|b\\.[a-z]+|cbn?z|tbn?z)[ \t]+([^/]+)")
+    string(STRIP "${CMAKE_MATCH_2}" operands)
+    string(REGEX REPLACE "^.*[ \t,]" "" target "${operands}")
+    if(NOT target MATCHES "^\\.L[A-Za-z0-9_]+$")
+      set(bad TRUE)
+    endif()
+  elseif(line MATCHES "^[ \t]*(br|blr)[ \t]+(x[0-9]+)")
+    if(NOT CMAKE_MATCH_2 IN_LIST import_regs)
+      set(bad TRUE)
+    endif()
+  endif()
+  if(bad)
+    string(STRIP "${line}" line)
+    message(FATAL_ERROR "crt.c: ${fn} jumps out of the function (${line}), possibly into itself: ${ASM}")
   endif()
 endforeach()
 if(functions EQUAL 0)

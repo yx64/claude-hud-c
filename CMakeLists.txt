@@ -62,12 +62,18 @@ if(WIN32)
   #                   memset could become a call to memset itself, an endless loop that only shows once some
   #                   change makes the compiler emit it
   #   -fno-lto        the checked assembly must be the final code, not something link-time optimisation rewrites
-  # The check (cmake/CheckCrtAsm.cmake): every call, jmp and conditional jump goes to a local label or through
-  # __imp_ to a system DLL. Any other target could lead back to the function itself, and a tail call is a jmp
+  # The check (cmake/CheckCrtAsm.cmake): every call and jump, x86-64 or ARM64, goes to a local label or through
+  # __imp_ to a system DLL. Any other target could lead back to the function itself, and a tail call is a jump
   # too, so "does not jump to itself" would not be enough.
   set(HUD_CRT_ASM ${CMAKE_CURRENT_BINARY_DIR}/crt.s)
+  # A cross build (CMAKE_C_COMPILER_TARGET) has to reach this hand-written compile too, or crt.s comes out
+  # for the host.
+  set(HUD_CRT_TARGET "")
+  if(CMAKE_C_COMPILER_TARGET)
+    set(HUD_CRT_TARGET --target=${CMAKE_C_COMPILER_TARGET})
+  endif()
   add_custom_command(OUTPUT ${HUD_CRT_ASM}
-    COMMAND ${CMAKE_C_COMPILER} ${HUD_PARSE_FLAGS} -O3 -Wall -Wextra -Werror -ffreestanding -fno-lto -S ${CMAKE_CURRENT_SOURCE_DIR}/src/crt.c -o ${HUD_CRT_ASM}
+    COMMAND ${CMAKE_C_COMPILER} ${HUD_CRT_TARGET} ${HUD_PARSE_FLAGS} -O3 -Wall -Wextra -Werror -ffreestanding -fno-lto -S ${CMAKE_CURRENT_SOURCE_DIR}/src/crt.c -o ${HUD_CRT_ASM}
     COMMAND ${CMAKE_COMMAND} -DASM=${HUD_CRT_ASM} -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckCrtAsm.cmake
     DEPENDS src/crt.c ${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckCrtAsm.cmake
     COMMAND_EXPAND_LISTS VERBATIM)
