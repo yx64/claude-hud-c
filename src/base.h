@@ -64,7 +64,11 @@ us us_int(int64_t v);
 void sb_num(sb *b, double v);           // Number.prototype.toString()
 void sb_fixed(sb *b, double v, int f);  // Number.prototype.toFixed(f)
 us sb_done(sb *b);
-us us_cat(int count, ...);
+// The parts go in as an array rather than through "...": clang on Windows ARM64 passes a 16-byte struct
+// that no longer fits in x0-x7 wholly on the stack, while va_arg reads it split between x7 and the stack
+// as Microsoft's convention has it, so every part from the one that straddles on came out wrong.
+us us_cat_n(int count, const us *parts);
+#define us_cat(...) us_cat_n(countof(((us[]){__VA_ARGS__})), (us[]){__VA_ARGS__})
 
 // JSON access with JS semantics. A null jv means "undefined"; JSON null is a yyjson null value.
 typedef yyjson_val *jv;

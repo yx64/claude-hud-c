@@ -21,9 +21,9 @@
 
 static us claude_dir_of(us home) {
     us env = us_trim(env_get("CLAUDE_CONFIG_DIR"));
-    if (!env.n) return path_join(2, home, US(".claude"));
+    if (!env.n) return path_join(home, US(".claude"));
     if (us_eq_c(env, "~")) return path_resolve(home);
-    if (us_starts_c(env, "~/") || us_starts_c(env, "~\\")) return path_join(2, home, us_slice(env, 2, env.n));
+    if (us_starts_c(env, "~/") || us_starts_c(env, "~\\")) return path_join(home, us_slice(env, 2, env.n));
     return path_resolve(env);
 }
 
@@ -153,7 +153,7 @@ static void run(const char *buf, size_t n, sb *out) {
 // Observation build only. Beside the executable, so nothing has to be configured: the trace log gets
 // one line per refresh (time, duration, and what was not reproduced exactly), and capture
 // keeps each stdin for test/compare/replay.mjs.
-static us beside_exe(const char *name) { return path_join(2, os_exe_dir(), us_c(name)); }
+static us beside_exe(const char *name) { return path_join(os_exe_dir(), us_c(name)); }
 #endif
 
 int hud_main(void) {
@@ -169,8 +169,8 @@ int hud_main(void) {
     int64_t wall = (int64_t)os_now_ms();
     us capture = beside_exe("capture");
     os_mkdir(capture);
-    us name = us_cat(4, us_int(wall), US("-"), us_int(os_pid()), US(".json"));
-    write_file(path_join(2, capture, name), us_utf8(buf, n), 0, WRITE_NEW);
+    us name = us_cat(us_int(wall), US("-"), us_int(os_pid()), US(".json"));
+    write_file(path_join(capture, name), us_utf8(buf, n), 0, WRITE_NEW);
 #endif
     sb out = {0};
     run(buf, n, &out);

@@ -55,11 +55,11 @@ static us encode_uri_component(us s) {
 
 static us github_ref_url(jv repo, us ref) {
     if (!jstr_eq(jget(repo, "host"), "github.com") || !github_name(jget(repo, "owner")) || !github_name(jget(repo, "name"))) return US_EMPTY;
-    us base = us_cat(4, US("https://github.com/"), jstr(jget(repo, "owner")), US("/"), jstr(jget(repo, "name")));
+    us base = us_cat(US("https://github.com/"), jstr(jget(repo, "owner")), US("/"), jstr(jget(repo, "name")));
     if (us_starts_c(ref, "detached:") && ref.n > 9) {
         bool hex = true;
         for (int32_t i = 9; i < ref.n; i++) hex &= (ref.p[i] >= '0' && ref.p[i] <= '9') || (ref.p[i] >= 'a' && ref.p[i] <= 'f');
-        if (hex) return us_cat(3, base, US("/commit/"), us_slice(ref, 9, ref.n));
+        if (hex) return us_cat(base, US("/commit/"), us_slice(ref, 9, ref.n));
     }
     sb b = {0};
     sb_us(&b, base);
@@ -174,7 +174,7 @@ VcsStatus *git_status(us cwd, jv repo, bool line_diffs) {
             bool hex = has_oid && oid.n >= 7;
             for (int32_t k = 0; hex && k < oid.n; k++) hex = (oid.p[k] >= '0' && oid.p[k] <= '9') || (oid.p[k] >= 'a' && oid.p[k] <= 'f');
             if (!hex) return nullptr;
-            branch = us_cat(2, US("detached:"), us_slice(oid, 0, 7));
+            branch = us_cat(US("detached:"), us_slice(oid, 0, 7));
         }
     }
     if (!branch.n) return nullptr;
@@ -229,8 +229,8 @@ bool is_jj_repo(us cwd) {
     us dir;
     if (!real_directory(cwd, &dir)) return false;
     for (int depth = 0; depth < 64; depth++) {
-        if (os_lstat_kind(path_join(2, dir, US(".jj"))) == 1) return true;
-        if (os_lstat_kind(path_join(2, dir, US(".git")))) return false;
+        if (os_lstat_kind(path_join(dir, US(".jj"))) == 1) return true;
+        if (os_lstat_kind(path_join(dir, US(".git")))) return false;
         us parent = dir_of(dir);
         if (us_eq(parent, dir)) break;
         dir = parent;

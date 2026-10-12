@@ -76,7 +76,7 @@ static us fixed(double v, int f) {
     return sb_done(&b);
 }
 
-#define CAT(...) us_cat(countof(((us[]){__VA_ARGS__})), __VA_ARGS__)
+#define CAT(...) us_cat(__VA_ARGS__)
 
 static us join(us *parts, int n, us sep) {
     sb b = {0};
@@ -767,7 +767,7 @@ static us vcs_part(bool expanded) {
 // insideCwd: path.resolve(cwd, candidate) when it stays inside cwd
 static bool inside_cwd(us cwd, us candidate, us *out) {
     us base = path_resolve(cwd);
-    us resolved = path_join(2, base, candidate);
+    us resolved = path_join(base, candidate);
     us lb = path_key(base), lr = path_key(resolved);
     us rel;
     if (us_eq(lb, lr)) rel = US_EMPTY;

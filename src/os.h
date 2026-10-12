@@ -65,7 +65,8 @@ us os_exe_dir(void);
 extern const uint16_t OS_SEP;
 bool is_sep(uint16_t c);
 us path_resolve(us p);
-us path_join(int count, ...);  // path.join of an absolute first part, which is then resolved too
+us path_join_n(int count, const us *parts);  // path.join of an absolute first part, which is then resolved too
+#define path_join(...) path_join_n(countof(((us[]){__VA_ARGS__})), (us[]){__VA_ARGS__})  // an array: see us_cat
 bool path_is_absolute(us p);
 us dir_of(us p);           // path.dirname of a resolved path
 us path_key(us p);         // the form two paths are compared in: folded where the platform folds case

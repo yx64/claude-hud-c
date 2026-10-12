@@ -1,7 +1,6 @@
 // The platform layer on Windows (see os.h): Win32 only, no C runtime. Paths are drive-absolute
 // and follow path.win32; child processes run in a job object.
 #include <math.h>
-#include <stdarg.h>
 #include <string.h>
 #include <windows.h>
 
@@ -140,7 +139,7 @@ us os_temp_dir(void) {
     DWORD n = GetTempPathW(MAX_PATH + 1, t);
     if (!n || n > MAX_PATH) return US_EMPTY;
     while (n && t[n - 1] == '\\') n--;
-    return us_cat(1, wus(t, n));
+    return us_cat(wus(t, n));
 }
 
 double os_now_ms(void) {
@@ -322,7 +321,7 @@ bool real_path(us p, us *out) {
 
 int os_list_dir(us dir, DirEntry **out, int max) {
     WIN32_FIND_DATAW fd;
-    HANDLE h = FindFirstFileW(wz(path_join(2, dir, US("*"))), &fd);
+    HANDLE h = FindFirstFileW(wz(path_join(dir, US("*"))), &fd);
     if (h == INVALID_HANDLE_VALUE) return -1;
     int n = 0, cap = 64;
     DirEntry *e = arena_alloc(sizeof(DirEntry) * (size_t)cap);
@@ -334,7 +333,7 @@ int os_list_dir(us dir, DirEntry **out, int max) {
             memcpy(more, e, sizeof(DirEntry) * (size_t)n);
             e = more;
         }
-        e[n++] = (DirEntry){us_cat(1, name), fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT ? DE_OTHER
+        e[n++] = (DirEntry){us_cat(name), fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT ? DE_OTHER
                                              : fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY   ? DE_DIR
                                                                                                 : DE_FILE};
     } while (n < max && FindNextFileW(h, &fd));
@@ -391,7 +390,7 @@ us os_exe_dir(void) {
     DWORD n = GetModuleFileNameW(nullptr, self, MAX_PATH);
     while (n > 0 && self[n - 1] != L'\\') n--;
     if (n > 0) n--;
-    return us_cat(1, wus(self, n));
+    return us_cat(wus(self, n));
 }
 
 // ---- paths: path.win32 ----
@@ -430,16 +429,12 @@ us path_resolve(us p) {
     return sb_done(&b);
 }
 
-us path_join(int count, ...) {
+us path_join_n(int count, const us *parts) {
     sb b = {0};
-    va_list ap;
-    va_start(ap, count);
     for (int i = 0; i < count; i++) {
-        us s = va_arg(ap, us);
         if (i && b.n && !is_sep(b.p[b.n - 1])) sb_ch(&b, '\\');
-        sb_us(&b, s);
+        sb_us(&b, parts[i]);
     }
-    va_end(ap);
     return path_resolve(sb_done(&b));
 }
 
@@ -637,7 +632,7 @@ bool os_find_git(us *out) {
         if (e.n >= 2 && e.p[0] == '"' && e.p[e.n - 1] == '"') e = us_slice(e, 1, e.n - 1);
         if (!e.n || us_find_ch(e, 0, 0) >= 0 || !path_is_absolute(e)) continue;
         us real;
-        if (!real_path(path_join(2, e, US("git.exe")), &real)) continue;
+        if (!real_path(path_join(e, US("git.exe")), &real)) continue;
         fstat_t st = stat_path(real);
         if (st.ok && st.is_file && path_is_absolute(real)) {
             *out = real;
@@ -666,7 +661,7 @@ bool os_find_jj(us cwd, us *out) {
     }
     for (int d = 0; d < nd; d++)
         for (int x = 0; x < 2; x++) {
-            us c = path_join(2, dirs[d], x ? US("jj.exe") : US("jj.com"));
+            us c = path_join(dirs[d], x ? US("jj.exe") : US("jj.com"));
             fstat_t st = stat_path(c);
             if (st.ok && st.is_file) {
                 *out = c;

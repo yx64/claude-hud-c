@@ -13,8 +13,8 @@ static jv sget(Ctx *ctx, const char *a, const char *b) {
 
 // getClaudeConfigJsonPath: inside CLAUDE_CONFIG_DIR when it is set, else in the home directory.
 static us claude_json(Ctx *ctx) {
-    return us_trim(env_get("CLAUDE_CONFIG_DIR")).n ? path_join(2, ctx->claude_dir, US(".claude.json"))
-                                                   : path_join(2, ctx->home, US(".claude.json"));
+    return us_trim(env_get("CLAUDE_CONFIG_DIR")).n ? path_join(ctx->claude_dir, US(".claude.json"))
+                                                   : path_join(ctx->home, US(".claude.json"));
 }
 
 // .claude.json is read once: the config counts and the auth line both look into it.
@@ -98,11 +98,11 @@ static int count_rules(us dir, bool resolved, RuleState *s) {
         us target;
         fstat_t st;
         if (e[i].kind == DE_OTHER) {
-            if (!real_path(path_join(2, root, name), &target) || rule_visit(s, target, false)) continue;
+            if (!real_path(path_join(root, name), &target) || rule_visit(s, target, false)) continue;
             st = stat_path(target);
             if (!st.ok) break;
         } else {
-            target = path_join(2, root, name);
+            target = path_join(root, name);
             if (rule_visit(s, target, false)) continue;
             bool is_dir = e[i].kind == DE_DIR;
             st = (fstat_t){.ok = true, .is_dir = is_dir, .is_file = !is_dir};
@@ -138,38 +138,38 @@ static bool exists(us p) { return file_exists(p); }
 
 void count_configs(Ctx *ctx) {
     us cd = ctx->claude_dir;
-    jv user = plain_object_file(path_join(2, cd, US("settings.json")));
+    jv user = plain_object_file(path_join(cd, US("settings.json")));
     jv cj = claude_json_doc(ctx);
     if (!jis_obj(cj)) cj = nullptr;
     omap user_mcp = {0}, project_mcp = {0};
     add_keys(&user_mcp, jget(user, "mcpServers"));
     add_keys(&user_mcp, jget(cj, "mcpServers"));
     del_strings(&user_mcp, jget(cj, "disabledMcpServers"));
-    int md = exists(path_join(2, cd, US("CLAUDE.md")));
-    int rules = rules_in(path_join(2, cd, US("rules")));
+    int md = exists(path_join(cd, US("CLAUDE.md")));
+    int rules = rules_in(path_join(cd, US("rules")));
     int hooks = key_count(jget(user, "hooks"));
     jv cwdv = sget(ctx, "cwd", nullptr);
     if (jtruthy(cwdv) && !jis_str(cwdv)) UNSUPPORTED("non-string cwd");
     if (jtruthy(cwdv) && jis_str(cwdv)) {
         us cwd = jstr(cwdv);
-        us pd = path_join(2, cwd, US(".claude"));
+        us pd = path_join(cwd, US(".claude"));
         // When the project's .claude is the user config dir, its files were counted above.
         bool user_dir = same_location(pd, cd);
-        md += exists(path_join(2, cwd, US("CLAUDE.md")));
-        md += exists(path_join(2, cwd, US("CLAUDE.local.md")));
-        md += !user_dir && exists(path_join(2, pd, US("CLAUDE.md")));
-        md += exists(path_join(2, pd, US("CLAUDE.local.md")));
+        md += exists(path_join(cwd, US("CLAUDE.md")));
+        md += exists(path_join(cwd, US("CLAUDE.local.md")));
+        md += !user_dir && exists(path_join(pd, US("CLAUDE.md")));
+        md += exists(path_join(pd, US("CLAUDE.local.md")));
         if (!user_dir) {
-            rules += rules_in(path_join(2, pd, US("rules")));
-            jv ps = plain_object_file(path_join(2, pd, US("settings.json")));
+            rules += rules_in(path_join(pd, US("rules")));
+            jv ps = plain_object_file(path_join(pd, US("settings.json")));
             add_keys(&project_mcp, jget(ps, "mcpServers"));
             hooks += key_count(jget(ps, "hooks"));
         }
-        jv ls = plain_object_file(path_join(2, pd, US("settings.local.json")));
+        jv ls = plain_object_file(path_join(pd, US("settings.local.json")));
         add_keys(&project_mcp, jget(ls, "mcpServers"));
         hooks += key_count(jget(ls, "hooks"));
         omap mcpjson = {0};
-        add_keys(&mcpjson, jget(plain_object_file(path_join(2, cwd, US(".mcp.json"))), "mcpServers"));
+        add_keys(&mcpjson, jget(plain_object_file(path_join(cwd, US(".mcp.json"))), "mcpServers"));
         del_strings(&mcpjson, jget(ls, "disabledMcpjsonServers"));
         for (int32_t i = 0; i < mcpjson.n; i++)
             if (mcpjson.e[i].alive) om_put(&project_mcp, mcpjson.e[i].k, mcpjson.e[i].kn, nullptr);
@@ -232,7 +232,7 @@ void read_auth(Ctx *ctx) {
                 us ml = us_lower(method), sl = us_lower(suffix);
                 bool has = false;
                 for (int32_t i = 0; i + sl.n <= ml.n && !has; i++) has = us_eq(us_slice(ml, i, i + sl.n), sl);
-                if (!has) method = us_cat(3, method, US(" "), suffix);
+                if (!has) method = us_cat(method, US(" "), suffix);
             }
         }
         ctx->has_auth_method = true, ctx->auth_method = method;
@@ -303,7 +303,7 @@ static bool external_usage(Ctx *ctx, Usage *u) {
     jv bl = jget(s, "balance_label");
     if (jis_str(bl)) {
         us l = us_trim(sanitize_display(jstr(bl)));
-        if (l.n) u->has_balance = true, u->balance = l.n <= 50 ? l : us_cat(2, us_slice(l, 0, 47), US("..."));
+        if (l.n) u->has_balance = true, u->balance = l.n <= 50 ? l : us_cat(us_slice(l, 0, 47), US("..."));
     }
     jv ms = jget(s, "model_scoped");
     if (jis_arr(ms)) {
@@ -398,8 +398,8 @@ static void write_snapshot(Ctx *ctx, Usage *u) {
     sb_us(&body, rest);
     int32_t base = path.n;
     while (base > 0 && path.p[base - 1] != OS_SEP) base--;
-    us name = us_cat(7, US("."), us_slice(path, base, path.n), US("."), us_int(os_pid()), US("."), us_int((int64_t)ctx->now), US(".tmp"));
-    us tmp = path_join(2, dir, name);
+    us name = us_cat(US("."), us_slice(path, base, path.n), US("."), us_int(os_pid()), US("."), us_int((int64_t)ctx->now), US(".tmp"));
+    us tmp = path_join(dir, name);
     if (!write_file(tmp, sb_done(&body), 0, WRITE_NEW)) return;
     os_rename(tmp, path);
 }
@@ -444,7 +444,7 @@ void cost_totals(Ctx *ctx) {
     double now = ctx->now;
     char today[16];
     local_date_key(now, today);
-    us path = path_join(4, ctx->claude_dir, US("plugins"), US("claude-hud"), US("daily-cost.json"));
+    us path = path_join(ctx->claude_dir, US("plugins"), US("claude-hud"), US("daily-cost.json"));
     Session *e = arena_alloc(sizeof(Session) * MAX_SESSIONS);
     int n = 0;
     double week_start = now, carry = 0;
@@ -550,8 +550,8 @@ void cost_totals(Ctx *ctx) {
         sb_us(&b, US(",\n    \"carry\": "));
         sb_num(&b, carry);
         sb_us(&b, US("\n  }\n}\n"));
-        us name = us_cat(5, US("daily-cost.json."), us_int(os_pid()), US("."), us_int((int64_t)now), US(".tmp"));
-        us tmp = path_join(2, dir_of(path), name);
+        us name = us_cat(US("daily-cost.json."), us_int(os_pid()), US("."), us_int((int64_t)now), US(".tmp"));
+        us tmp = path_join(dir_of(path), name);
         // Write-then-rename, so concurrent sessions never read a torn ledger. The rename keeps the
         // stamped time.
         if (write_file(tmp, sb_done(&b), now, WRITE_NEW)) os_rename(tmp, path);
@@ -604,8 +604,8 @@ void output_speed(Ctx *ctx) {
     usage = jget(usage, "current_usage");
     jv output = jget(usage, "output_tokens"), api = sget(ctx, "cost", "total_api_duration_ms");
     if (!tp.n || !jtruthy(usage) || !count_value(output) || !count_value(api)) return;
-    us file = path_join(5, ctx->claude_dir, US("plugins"), US("claude-hud"), US("speed-cache"),
-                        us_cat(2, sha256_hex(path_resolve(tp)), US(".json")));
+    us file = path_join(ctx->claude_dir, US("plugins"), US("claude-hud"), US("speed-cache"),
+                        us_cat(sha256_hex(path_resolve(tp)), US(".json")));
     sb kb = {0};
     join_part(&kb, jget(usage, "input_tokens"));
     sb_ch(&kb, ':');
@@ -640,7 +640,7 @@ void output_speed(Ctx *ctx) {
     if (has) sb_num(&b, speed);
     else sb_us(&b, US("null"));
     sb_ch(&b, '}');
-    us tmp = us_cat(4, file, US("."), us_int(os_pid()), US(".tmp"));
+    us tmp = us_cat(file, US("."), us_int(os_pid()), US(".tmp"));
     if (write_file(tmp, sb_done(&b), 0, WRITE_ALWAYS)) os_rename(tmp, file);
     ctx->has_speed = has, ctx->speed = speed;
 }

@@ -78,7 +78,7 @@ static us usage_path(jv v, us home) {
     if (!jis_str(v)) return US_EMPTY;
     us s = us_trim(jstr(v));
     if (us_eq_c(s, "~")) s = home;
-    else if (us_starts_c(s, "~/") || us_starts_c(s, "~\\")) s = path_join(2, home, us_slice(s, 2, s.n));
+    else if (us_starts_c(s, "~/") || us_starts_c(s, "~\\")) s = path_join(home, us_slice(s, 2, s.n));
     sb b = {0};
     for (int32_t i = 0; i < s.n; i++) {
         if (s.p[i] == '$' && i + 2 < s.n && s.p[i + 1] == '{') {
@@ -191,8 +191,8 @@ static us color(Section colors, const char *key, us def) {
 }
 
 void load_config(Config *c, us claude_dir, us home) {
-    BASE = read_config_file(path_join(4, claude_dir, US("plugins"), US("claude-hud"), US("config.json")));
-    OVR = read_config_file(path_join(2, claude_dir, US("claude-hud.json")));
+    BASE = read_config_file(path_join(claude_dir, US("plugins"), US("claude-hud"), US("config.json")));
+    OVR = read_config_file(path_join(claude_dir, US("claude-hud.json")));
     *c = (Config){0};
 
     // migrateLegacyLayout: v0.0.x's `layout`, a string or an object, when lineLayout is absent

@@ -12,7 +12,6 @@
 #include <poll.h>
 #include <pwd.h>
 #include <signal.h>
-#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -450,7 +449,7 @@ us path_resolve(us p) {
             UNSUPPORTED("current directory unreadable");
             return p;
         }
-        p = us_cat(3, from8(cwd), US("/"), p);
+        p = us_cat(from8(cwd), US("/"), p);
     }
     us parts[512];
     int np = 0;
@@ -471,16 +470,12 @@ us path_resolve(us p) {
     return sb_done(&b);
 }
 
-us path_join(int count, ...) {
+us path_join_n(int count, const us *parts) {
     sb b = {0};
-    va_list ap;
-    va_start(ap, count);
     for (int i = 0; i < count; i++) {
-        us s = va_arg(ap, us);
         if (i && b.n && b.p[b.n - 1] != '/') sb_ch(&b, '/');
-        sb_us(&b, s);
+        sb_us(&b, parts[i]);
     }
-    va_end(ap);
     return path_resolve(sb_done(&b));
 }
 
@@ -536,7 +531,7 @@ static char **candidates(us exe) {
         const char *q = strchr(p, ':');
         size_t len = q ? (size_t)(q - p) : strlen(p);
         us dir = len ? us_utf8(p, len) : US(".");
-        c[k++] = (char *)u8(us_cat(3, dir, US("/"), exe));
+        c[k++] = (char *)u8(us_cat(dir, US("/"), exe));
         if (!q) break;
         p = q + 1;
     }

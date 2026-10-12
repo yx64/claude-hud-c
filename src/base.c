@@ -1,7 +1,6 @@
 #include "base.h"
 
 #include <math.h>
-#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -352,12 +351,9 @@ void sb_fixed(sb *b, double x, int f) {
 
 us sb_done(sb *b) { return (us){b->p, b->n}; }
 
-us us_cat(int count, ...) {
+us us_cat_n(int count, const us *parts) {
     sb b = {0};
-    va_list ap;
-    va_start(ap, count);
-    for (int i = 0; i < count; i++) sb_us(&b, va_arg(ap, us));
-    va_end(ap);
+    for (int i = 0; i < count; i++) sb_us(&b, parts[i]);
     return sb_done(&b);
 }
 

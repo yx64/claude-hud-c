@@ -78,13 +78,13 @@ static us state_path(us transcript) {
     if (!dir.n) {
         us t = os_temp_dir();
         if (!t.n) return US_EMPTY;
-        dir = path_join(2, t, US("claude-hud-c"));
+        dir = path_join(t, US("claude-hud-c"));
     }
     int32_t b = transcript.n;
     while (b > 0 && !is_sep(transcript.p[b - 1])) b--;
     us name = us_slice(transcript, b, transcript.n);
     if (us_ends_c(name, ".jsonl")) name.n -= 6;
-    return name.n ? path_join(2, dir, us_cat(2, name, US(".bin"))) : US_EMPTY;
+    return name.n ? path_join(dir, us_cat(name, US(".bin"))) : US_EMPTY;
 }
 
 // ---- saving: the structures copied whole, their pointers made offsets ----
@@ -177,7 +177,7 @@ bool state_save(const TranscriptFile *f, const StateSlot *slot, uint64_t off, co
     AT(&b, h, Header)->size = b.n;
 
     // Written aside and renamed over, so a reader finds a whole state or the one before.
-    us tmp = us_cat(4, path, US("."), us_int(os_pid()), US(".tmp"));
+    us tmp = us_cat(path, US("."), us_int(os_pid()), US(".tmp"));
     bool ok = write_bytes(tmp, b.p, b.n, 0, WRITE_ALWAYS) && os_rename(tmp, path);
     free(b.p);
     return ok;
