@@ -11,7 +11,7 @@
 
     sh is the one Claude Code uses: CLAUDE_CODE_GIT_BASH_PATH from the environment or from
     env in the user-level settings.json. The upstream HUD runs the way its own launcher runs it
-    (test\run-upstream.mjs).
+    (run-upstream.mjs beside this script).
 
     The refreshes write the HUD's runtime files (daily-cost ledger) as live refreshes do; the
     stdin uses its own session id, so the live sessions' ledger entries are not changed.

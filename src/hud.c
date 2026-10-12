@@ -152,7 +152,7 @@ static void run(const char *buf, size_t n, sb *out) {
 #if defined(HUD_C_TRACE)
 // Observation build only. Beside the executable, so nothing has to be configured: the trace log gets
 // one line per refresh (time, duration, and what was not reproduced exactly), and capture
-// keeps each stdin for test/replay.mjs.
+// keeps each stdin for test/compare/replay.mjs.
 static us beside_exe(const char *name) { return path_join(2, os_exe_dir(), us_c(name)); }
 #endif
 

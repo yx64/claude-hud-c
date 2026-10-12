@@ -568,7 +568,7 @@ void cost_totals(Ctx *ctx) {
 void memory_usage(Ctx *ctx) {
     double total, free;
 #if defined(HUD_C_TEST)
-    // Test build only: the comparison scripts give both sides the same figures (test/fakeclock.mjs).
+    // Test build only: the comparison scripts give both sides the same figures (test/compare/fakeclock.mjs).
     size_t got;
     const char *t = us_to_utf8(env_get("HUD_FAKE_MEM"), &got);
     const char *colon = memchr(t, ':', got);

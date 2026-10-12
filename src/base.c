@@ -504,7 +504,7 @@ bool number_of(const char *s, size_t n, double *v) {
 double now_ms(void) {
 #if defined(HUD_C_TEST)
     // Test build only: the comparison scripts freeze the clock at the instant they also give the
-    // upstream HUD (test/fakeclock.mjs), so time-dependent text matches byte for byte.
+    // upstream HUD (test/compare/fakeclock.mjs), so time-dependent text matches byte for byte.
     static double fixed = -1;
     if (fixed < 0) {
         size_t n;

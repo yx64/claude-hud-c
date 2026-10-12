@@ -42,7 +42,7 @@ moves.
 
 Measured on Windows, claude-hud 0.10.0 on node 24.21.0, Git Bash's sh, git status display off;
 40 rounds with the three forms alternated, CPU load 8% before and after; the two sh outputs were identical apart from
-the run time claude-hud-c appends. To reproduce: `test/Measure-HudLatency.ps1` (Windows).
+the run time claude-hud-c appends. To reproduce: `test/compare/Measure-HudLatency.ps1` (Windows).
 
 With git status display on, each refresh also waits for one git process, on both sides alike.
 
@@ -52,7 +52,7 @@ Byte-identical output is the rule every change is held to, not an aim. The test 
 and claude-hud-c on the same input at a frozen clock and compare the status line and every file both write: all the
 session transcripts on the machine crossed with sets of stdin, config, width and time; generated hostile transcripts
 and configs; transcripts growing step by step to check the incremental parsing. Running them needs node 24 and a
-claude-hud source tree of the version named in `test/common.mjs`, with its `dist/` built; each script's header says
+claude-hud source tree of the version named in `test/compare/common.mjs`, with its `dist/` built; each script's header says
 how to call it.
 
 Known gaps, where claude-hud-c renders English or an approximation instead:

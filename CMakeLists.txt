@@ -4,7 +4,7 @@
 #   ctest --test-dir <BuildDir> --output-on-failure
 # Outputs in <BuildDir>, with .exe on Windows; <ProjectName> is the project's name, see the targets at the end:
 # release/<ProjectName> (install this one), trace/<ProjectName> (not built by default), <ProjectName>-test and
-# <ProjectName>-test-nostate (for test/), fake-jj/jj (for test/fuzz.mjs). Windows, Linux and macOS; the platform
+# <ProjectName>-test-nostate (for test/), fake-jj/jj (for test/compare/fuzz.mjs). Windows, Linux and macOS; the platform
 # layer is chosen below.
 cmake_minimum_required(VERSION 3.28)
 # CMake's Windows support for clang insists on a resource compiler although nothing here uses one; take LLVM's,
@@ -130,7 +130,7 @@ set_target_properties(claude-hud-c-trace PROPERTIES EXCLUDE_FROM_ALL TRUE)
 hud_executable(claude-hud-c-test claude-hud-c-test ${CMAKE_CURRENT_BINARY_DIR} HUD_C_TEST)
 hud_executable(claude-hud-c-test-nostate claude-hud-c-test-nostate ${CMAKE_CURRENT_BINARY_DIR} HUD_C_TEST HUD_C_NO_TRANSCRIPT_STATE)
 
-# The jj stand-in for test/fuzz.mjs. A test double, so it links the C runtime like any program.
+# The jj stand-in for test/compare/fuzz.mjs. A test double, so it links the C runtime like any program.
 add_executable(fake-jj test/fake-jj.c)
 target_compile_options(fake-jj PRIVATE -std=c23 -O2 -Wall -Wextra -Werror)
 set_target_properties(fake-jj PROPERTIES OUTPUT_NAME jj RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/fake-jj MSVC_RUNTIME_LIBRARY MultiThreaded)
