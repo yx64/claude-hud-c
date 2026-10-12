@@ -1,0 +1,163 @@
+# Builds and tests claude-hud-c natively on each platform it ships for, and publishes a release when a v* tag
+# is pushed. Every target has a GitHub-hosted runner of its own architecture, so nothing is cross-compiled
+# and every executable that gets released has passed the tests on its own kind of machine.
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+# Read-only by default; only the release job may write.
+permissions:
+  contents: read
+
+# A newer push to the same branch or pull request supersedes a run still in progress. Tag runs are never
+# cancelled: they publish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      # One target failing does not stop the others, so a run shows every platform's result at once.
+      fail-fast: false
+      matrix:
+        include:
+          - { name: windows-x64, runner: windows-2025, exe: .exe }
+          - { name: windows-arm64, runner: windows-11-arm, exe: .exe }
+          - { name: linux-x64, runner: ubuntu-26.04 }
+          - { name: linux-arm64, runner: ubuntu-26.04-arm }
+          # The oldest macOS the executable accepts; without it, it would require the runner's own version.
+          - { name: macos-x64, runner: macos-26-intel, cmake: '-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0' }
+          - { name: macos-arm64, runner: macos-26, cmake: '-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0' }
+    steps:
+      - uses: actions/checkout@v7
+
+      # Each toolchain step leaves the compiler's path in HUD_CC. The build needs clang with C23 support and
+      # lld beside it (CMakeLists.txt links with -fuse-ld=lld for link-time optimisation).
+
+      # The image's LLVM, with llvm-rc and llvm-readobj next to clang, as CMakeLists.txt expects.
+      - name: Toolchain (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $PSNativeCommandUseErrorActionPreference = $true
+          $clang = Join-Path $env:ProgramFiles 'LLVM\bin\clang.exe'
+          if (-not (Test-Path -LiteralPath $clang)) { throw "no LLVM at $clang" }
+          & $clang --version
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "HUD_CC=$($clang.Replace('\', '/'))"
+
+      # The newest clang in the image's own packages; lld is a separate package.
+      - name: Toolchain (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          llvm=/usr/lib/llvm-22/bin
+          if [[ ! -x $llvm/ld.lld ]]; then
+            sudo apt-get update -q
+            sudo apt-get install -y -q --no-install-recommends lld-22
+          fi
+          "$llvm/clang" --version
+          "$llvm/ld.lld" --version
+          echo "HUD_CC=$llvm/clang" >> "$GITHUB_ENV"
+
+      # Apple's toolchain has no lld, and lld must match the clang that wrote the LTO bitcode, so both come
+      # from Homebrew at the same version: llvm@20 is in the image, lld@20 is installed next to it.
+      - name: Toolchain (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
+          HOMEBREW_NO_INSTALL_CLEANUP: 1
+        run: |
+          set -euo pipefail
+          brew install lld@20
+          llvm=$(brew --prefix llvm@20)/bin
+          lld=$(brew --prefix lld@20)/bin
+          "$llvm/clang" --version
+          "$lld/ld64.lld" --version
+          echo "$lld" >> "$GITHUB_PATH"
+          echo "HUD_CC=$llvm/clang" >> "$GITHUB_ENV"
+
+      # The tests run in a step of their own (below) rather than as part of the build, so a failure shows
+      # which of the two it was.
+      - name: Configure
+        run: cmake -S . -B build -G Ninja "-DCMAKE_C_COMPILER=${{ env.HUD_CC }}" -DHUD_TEST_AFTER_BUILD=OFF ${{ matrix.cmake }}
+
+      - name: Build
+        run: cmake --build build
+
+      # Quiet unless something fails; then the FAIL lines name the group, the case and where the output differs.
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      # What a downloaded executable asks of the machine it runs on: the newest glibc symbol version on Linux,
+      # the minimum macOS version on macOS.
+      - name: Inspect (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          file build/release/claude-hud-c
+          echo "needs glibc $(objdump -T build/release/claude-hud-c | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -n 1)"
+      - name: Inspect (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          file build/release/claude-hud-c
+          vtool -show-build build/release/claude-hud-c
+
+      - name: Package
+        run: |
+          cmake -E make_directory dist
+          cmake -E copy build/release/claude-hud-c${{ matrix.exe }} dist/claude-hud-c-${{ matrix.name }}${{ matrix.exe }}
+
+      # Handed to the release job; kept briefly, the release is where executables stay.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: claude-hud-c-${{ matrix.name }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: claude-hud-c-*
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        shell: bash
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          sha256sum claude-hud-c-* > SHA256SUMS
+          cat SHA256SUMS
+          [[ $(wc -l < SHA256SUMS) -eq 6 ]] || { echo "expected 6 executables" >&2; exit 1; }
+
+      # gh is preinstalled on the runner; the job's own token is allowed to create releases (contents: write).
+      - name: Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --generate-notes \
+            --notes "Single executables, not archived. On Linux and macOS, make the downloaded file executable with chmod +x. SHA256SUMS lists their SHA-256 checksums."
