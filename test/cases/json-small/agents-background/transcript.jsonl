@@ -1,0 +1,3 @@
+{"type":"assistant","timestamp":"2026-10-10T11:58:00.000Z","message":{"id":"m8","model":"claude-opus-5-5","content":[{"type":"tool_use","id":"t8","name":"Task","input":}]}}
+{"type":"user","timestamp":"2026-10-10T11:58:00.000Z","toolUseResult":{"status":"async_launched","isAsync":true},"message":{"content":[{"type":"tool_result","tool_use_id":"t8","content":"launched"}]}}
+{"type":"queue-operation","operation":"enqueue","timestamp":"2026-10-10T11:58:00.000Z","content":"<tool-use-id>t8</tool-use-id><task-id>k1</task-id>"}

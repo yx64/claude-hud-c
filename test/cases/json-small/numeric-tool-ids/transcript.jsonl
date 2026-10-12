@@ -1,0 +1,2 @@
+{"type":"assistant","timestamp":"2026-10-10T11:58:00.000Z","message":{"id":"m1","content":[{"type":"tool_use","id":5,"name":"Read","input":{"file_path":"/a.txt"}},{"type":"tool_use","id":"6","name":"Edit","input":{"file_path":"/b.txt"}}]}}
+{"type":"user","timestamp":"2026-10-10T11:58:00.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"5","content":"ok"},{"type":"tool_result","tool_use_id":"6","content":"ok"}]}}

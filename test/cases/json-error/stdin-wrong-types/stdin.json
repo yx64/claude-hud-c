@@ -1,0 +1,1 @@
+{"session_id":5,"transcript_path":"@TRANSCRIPT@","cwd":"@PROJ@","model":{"id":7,"display_name":["x"]},"cost":"cheap","context_window":null,"rate_limits":{"five_hour":"x"}}

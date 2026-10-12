@@ -1,0 +1,2 @@
+{"type":"assistant","isSidechain":true,"timestamp":"2026-10-10T11:58:00.000Z","message":{"id":"m1","content":[{"type":"tool_use","id":"s1","name":"Read","input":{"file_path":"/side.txt"}}]}}
+{"type":"assistant","timestamp":"2026-10-10T11:58:00.000Z","message":{"id":"m9","model":"claude-opus-5-5","content":[{"type":"tool_use","id":"t9","name":"TodoWrite","input":{"todos":[{"content":"main","status":"in_progress"},{"content":"done","status":"completed"}]}}]}}

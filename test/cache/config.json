@@ -1,0 +1,8 @@
+{
+  "gitStatus": { "enabled": false },
+  "display": {
+    "showTools": true, "showSkills": true, "showMcp": true, "showAgents": true, "showTodos": true, "showSessionTokens": true,
+    "showCompactions": true, "showAdvisor": true, "showSessionStartDate": true, "showLastResponseAt": true, "showEffortLevel": true,
+    "showConfigCounts": true, "modelSource": "auto", "toolsMaxVisible": 0, "skillsMaxVisible": 0
+  }
+}

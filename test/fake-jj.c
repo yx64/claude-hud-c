@@ -1,8 +1,8 @@
-// Test stand-in for jj, built by CMakeLists.txt as fake-jj/jj and used by test/compare/fuzz.mjs: appends
-// its arguments to FAKE_JJ_LOG, one line per call, so the arguments each side passed can be
-// compared, then prints FAKE_JJ_OUT and exits with FAKE_JJ_EXIT. On Windows the line is the
-// command line after argv[0] as it arrived, quoting included; elsewhere the arguments joined by
-// spaces.
+// Test stand-in for jj, built by CMakeLists.txt as fake-jj/jj and used by the vcs cases and
+// test/compare/fuzz.mjs: appends its arguments to FAKE_JJ_LOG, one line per call, so the arguments
+// each side passed can be compared, then prints FAKE_JJ_OUT and exits with FAKE_JJ_EXIT. On Windows
+// the line is the command line after argv[0] as it arrived, quoting included; elsewhere the
+// arguments joined by spaces.
 #include <stdlib.h>
 #include <string.h>
 

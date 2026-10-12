@@ -48,12 +48,17 @@ With git status display on, each refresh also waits for one git process, on both
 
 ## Same output as claude-hud
 
-Byte-identical output is the rule every change is held to, not an aim. The test scripts under `test/` run claude-hud
-and claude-hud-c on the same input at a frozen clock and compare the status line and every file both write: all the
-session transcripts on the machine crossed with sets of stdin, config, width and time; generated hostile transcripts
-and configs; transcripts growing step by step to check the incremental parsing. Running them needs node 24 and a
-claude-hud source tree of the version named in `test/compare/common.mjs`, with its `dist/` built; each script's header says
-how to call it.
+Byte-identical output is the rule every change is held to, not an aim. It is checked at two levels:
+
+- **Every build** runs the tests under `test/cases`, grouped by area (UTF-8, malformed and large JSON, layout, display
+  items, written files, git and jj), comparing claude-hud-c's status line and the files it writes, byte for byte, with
+  what claude-hud printed and wrote for the same input at a frozen clock. claude-hud's output is recorded in the cases,
+  so the tests need only CMake. Another group grows transcripts step by step and holds the incremental parsing to a full
+  parse. `ctest` runs the same tests.
+- **The comparison scripts** under `test/compare` run claude-hud itself next to claude-hud-c: all the session
+  transcripts on the machine crossed with sets of stdin, config, width and time, and generated hostile transcripts and
+  configs. Running them needs node 24 and a claude-hud source tree of the version named in `test/compare/common.mjs`,
+  with its `dist/` built; each script's header says how to call it.
 
 Known gaps, where claude-hud-c renders English or an approximation instead:
 
@@ -99,14 +104,17 @@ earlier build wrote and replaces them as it goes.
 ## Install
 
 There are no prebuilt binaries; build from source. You need CMake 3.28 or later, Ninja, and clang with C23
-support and lld (clang 18 is too old). Neither node nor claude-hud is needed to build or run it.
+support and lld (clang 18 is too old). Neither node nor claude-hud is needed to build, test or run it.
 
 ```
 git clone https://github.com/yx64/claude-hud-c
 cmake -S claude-hud-c -B <BuildDir> -G Ninja -DCMAKE_C_COMPILER=<Clang>
 cmake --build <BuildDir>
-ctest --test-dir <BuildDir> --output-on-failure
 ```
+
+The build runs the tests as well and fails when one fails. It prints one summary line, such as
+`tests: 424/424 passed (...)`, or a `FAIL` line per failed check with where the output differs. To build without
+them, configure with `-DHUD_TEST_AFTER_BUILD=OFF`; `ctest --test-dir <BuildDir>` runs them at any time.
 
 Copy `<BuildDir>/release/claude-hud-c.exe` (`claude-hud-c` off Windows) to a directory that is not on `PATH`, such as
 `~/.local/tools/`, and point `statusLine` in the user-level `~/.claude/settings.json` at it:

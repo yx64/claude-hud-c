@@ -10,6 +10,8 @@
 # CONFIG_DIR is used as CLAUDE_CONFIG_DIR and must be a copy: the refreshes write their ledger into it. Without
 # it a fixed config is written under WORK. TMP, TEMP and TMPDIR point under WORK, so saved parse states stay
 # there. The executables carry .exe on a Windows host only.
+# Quiet on success unless HUD_TEST_VERBOSE is set, like the drivers under test/; RESULT and STAMP, when
+# given, are written as they write theirs (test/common.cmake).
 foreach(v BIN WORK)
   if(NOT DEFINED ${v})
     message(FATAL_ERROR "Smoke.cmake: pass -D${v}=...")
@@ -27,6 +29,11 @@ foreach(exe ${release} ${test} ${nostate})
   endif()
 endforeach()
 file(MAKE_DIRECTORY ${WORK}/tmp)
+function(smoke_note text)
+  if("$ENV{HUD_TEST_VERBOSE}" MATCHES "^(1|[Tt][Rr][Uu][Ee]|[Oo][Nn]|[Yy][Ee][Ss])$")
+    message("${text}")
+  endif()
+endfunction()
 
 if(NOT DEFINED CONFIG_DIR)
   set(CONFIG_DIR ${WORK}/claude)
@@ -121,7 +128,7 @@ if(t0_code EQUAL 0)
     if(NOT same)
       message(FATAL_ERROR "smoke: ${name} and test build differ at the same moment\n--- ${name}\n${a}--- test\n${b}")
     endif()
-    message(STATUS "smoke: ${name} equals the test build")
+    smoke_note("smoke: ${name} equals the test build")
   endforeach()
 endif()
 
@@ -138,5 +145,12 @@ if(DEFINED TRACE)
   file(MAKE_DIRECTORY ${WORK}/moved/${stamp})
   file(RENAME ${trace_dir}/claude-hud-c-trace.log ${WORK}/moved/${stamp}/claude-hud-c-trace.log)
   file(RENAME ${trace_dir}/capture ${WORK}/moved/${stamp}/capture)
-  message(STATUS "smoke: trace build wrote its trace line and capture file")
+  smoke_note("smoke: trace build wrote its trace line and capture file")
+endif()
+
+if(DEFINED RESULT)
+  file(WRITE ${RESULT} "smoke 1 1 0\n")
+endif()
+if(DEFINED STAMP)
+  file(TOUCH ${STAMP})
 endif()

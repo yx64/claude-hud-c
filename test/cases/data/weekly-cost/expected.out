@@ -1,0 +1,9 @@
+[0m[36m[Opus 5.5 ◑ high][0m │ ]8;;@WORKURL@/proj\[33mproj[0m]8;;\ │ [2mhud tests[0m │ [2mCC v2.1.300[0m │ [2m⏱️  1h 30m[0m │ [2mCost $1.23 | Today $0.0000 | Week $0.0000[0m
+[0m[2mContext[0m [32m█████[2m░░░░░[0m [32m45%[0m │ [2mUsage[0m [94m███[2m░░░░░░░[0m [94m25%[0m (resets in 1h 31m)
+[0m[2mCache hit[0m 93.0%
+[0m[33m◐[0m [36mmcp__github__create_issue[0m | [33m◐[0m [36mBash[0m[2m: cmake --build build[0m | [32m✓[0m Read [2m×1[0m | [32m✓[0m Edit [2m×1[0m | [32m✓[0m Grep [2m×1[0m
+[0m[32m✓[0m Skills [2m(1)[0m: [36mrelease-notes[0m
+[0m[32m✓[0m MCPs [2m(1)[0m: [36mgithub[0m
+[0m[33m◐[0m [35mExplore[0m [2m[haiku-4.5][0m[2m: find the test scripts[0m [2m(10m 0s)[0m
+[0m[33m▸[0m write the driver [2m(1/3)[0m
+[0m[2mTokens 167k (in: 24, out: 600, cache: 166k)[0m

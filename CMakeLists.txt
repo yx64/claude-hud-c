@@ -1,11 +1,11 @@
 # claude-hud-c. Configure with clang (the GNU-style driver, not clang-cl) and build out of the source tree:
 #   cmake -S <SourceDir> -B <BuildDir> -G Ninja -DCMAKE_C_COMPILER=<Clang>
-#   cmake --build <BuildDir>
-#   ctest --test-dir <BuildDir> --output-on-failure
+#   cmake --build <BuildDir>                  also runs the tests, see HUD_TEST_AFTER_BUILD at the end
+#   ctest --test-dir <BuildDir>               runs them on their own
 # Outputs in <BuildDir>, with .exe on Windows; <ProjectName> is the project's name, see the targets at the end:
 # release/<ProjectName> (install this one), trace/<ProjectName> (not built by default), <ProjectName>-test and
-# <ProjectName>-test-nostate (for test/), fake-jj/jj (for test/compare/fuzz.mjs). Windows, Linux and macOS; the platform
-# layer is chosen below.
+# <ProjectName>-test-nostate (for test/), fake-jj/jj and test-tools/bytes (test helpers). Windows, Linux and macOS;
+# the platform layer is chosen below.
 cmake_minimum_required(VERSION 3.28)
 # CMake's Windows support for clang insists on a resource compiler although nothing here uses one; take LLVM's,
 # from beside the given clang, when none is named.
@@ -130,12 +130,79 @@ set_target_properties(claude-hud-c-trace PROPERTIES EXCLUDE_FROM_ALL TRUE)
 hud_executable(claude-hud-c-test claude-hud-c-test ${CMAKE_CURRENT_BINARY_DIR} HUD_C_TEST)
 hud_executable(claude-hud-c-test-nostate claude-hud-c-test-nostate ${CMAKE_CURRENT_BINARY_DIR} HUD_C_TEST HUD_C_NO_TRANSCRIPT_STATE)
 
-# The jj stand-in for test/compare/fuzz.mjs. A test double, so it links the C runtime like any program.
+# The jj stand-in for the vcs cases and test/compare/fuzz.mjs. A test double, so it links the C runtime like any
+# program.
 add_executable(fake-jj test/fake-jj.c)
 target_compile_options(fake-jj PRIVATE -std=c23 -O2 -Wall -Wextra -Werror)
 set_target_properties(fake-jj PROPERTIES OUTPUT_NAME jj RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/fake-jj MSVC_RUNTIME_LIBRARY MultiThreaded)
 
-# One refresh with a fixed config: the release build, the test build and the test build without parse state
-# must agree. cmake/Smoke.cmake also takes CONFIG_DIR, to run the same against another config directory.
+# The byte-exact file work of the test drivers, which CMake cannot do itself (see test/bytes.c). A test helper
+# like fake-jj.
+add_executable(hud-bytes test/bytes.c)
+target_compile_options(hud-bytes PRIVATE -std=c23 -O2 -Wall -Wextra -Werror)
+# The Microsoft C library marks fopen deprecated in favour of its own fopen_s, which other platforms lack.
+target_compile_definitions(hud-bytes PRIVATE $<$<PLATFORM_ID:Windows>:_CRT_SECURE_NO_WARNINGS>)
+set_target_properties(hud-bytes PROPERTIES OUTPUT_NAME bytes RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test-tools MSVC_RUNTIME_LIBRARY MultiThreaded)
+
+# The tests, each group a ctest test of its own, all run with CMake alone (no node, no upstream source), so a
+# build anywhere and CI run the same ones:
+#   <Group>  each directory under test/cases: the test build against upstream's recorded output (test/run.cmake)
+#   cache    resuming from the saved parse state against a full parse (test/cache.cmake)
+#   smoke    one refresh with a fixed config: the release build, the test build and the test build without parse
+#            state must agree. cmake/Smoke.cmake also takes CONFIG_DIR, to run the same against another config
+#            directory
+# They print nothing but failures, warnings and a summary; HUD_TEST_VERBOSE=1 and HUD_TEST_ONLY=<Group>[/<Case>]
+# in the environment change that, see test/common.cmake.
 enable_testing()
-add_test(NAME smoke COMMAND ${CMAKE_COMMAND} -DBIN=${CMAKE_CURRENT_BINARY_DIR} -DWORK=${CMAKE_CURRENT_BINARY_DIR}/smoke -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Smoke.cmake)
+file(GLOB HUD_TEST_GROUPS LIST_DIRECTORIES true RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/test/cases CONFIGURE_DEPENDS
+     ${CMAKE_CURRENT_SOURCE_DIR}/test/cases/*)
+list(SORT HUD_TEST_GROUPS)
+# Files right in test/cases are the defaults every group's cases fall back on.
+file(GLOB HUD_TEST_SHARED LIST_DIRECTORIES false CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/test/cases/*)
+set(HUD_TEST_OUT ${CMAKE_CURRENT_BINARY_DIR}/test-output)
+set(HUD_TEST_RUNS "")
+foreach(group IN LISTS HUD_TEST_GROUPS)
+  if(IS_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/test/cases/${group})
+    file(GLOB_RECURSE inputs CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/test/cases/${group}/*)
+    list(APPEND HUD_TEST_RUNS ${group})
+    set(HUD_TEST_SCRIPT_${group} test/run.cmake)
+    set(HUD_TEST_DEPS_${group} claude-hud-c-test fake-jj hud-bytes ${HUD_TEST_SHARED} ${inputs})
+  endif()
+endforeach()
+list(APPEND HUD_TEST_RUNS cache smoke)
+set(HUD_TEST_SCRIPT_cache test/cache.cmake)
+set(HUD_TEST_DEPS_cache claude-hud-c-test claude-hud-c-test-nostate hud-bytes test/cache/lines.jsonl test/cache/config.json)
+set(HUD_TEST_SCRIPT_smoke cmake/Smoke.cmake)
+set(HUD_TEST_DEPS_smoke claude-hud-c claude-hud-c-test claude-hud-c-test-nostate)
+
+# HUD_TEST_AFTER_BUILD: every build also runs the tests whose inputs changed, and fails when one fails. Each
+# group leaves a stamp once all its checks passed; a group that failed, or ran filtered by HUD_TEST_ONLY,
+# leaves none and runs again on the next build. Off, the tests run only through ctest.
+option(HUD_TEST_AFTER_BUILD "Run the tests as part of every build" ON)
+set(HUD_TEST_STAMPS "")
+set(HUD_TEST_NAMES "")
+foreach(name IN LISTS HUD_TEST_RUNS)
+  set(script ${HUD_TEST_SCRIPT_${name}})
+  set(command ${CMAKE_COMMAND} -DGROUP=${name} -DBIN=${CMAKE_CURRENT_BINARY_DIR} -DRESULT=${HUD_TEST_OUT}/${name}.result)
+  if(name STREQUAL "smoke")
+    list(APPEND command -DWORK=${CMAKE_CURRENT_BINARY_DIR}/smoke)
+  endif()
+  add_test(NAME ${name} COMMAND ${command} -P ${CMAKE_CURRENT_SOURCE_DIR}/${script})
+  if(HUD_TEST_AFTER_BUILD)
+    set(stamp ${HUD_TEST_OUT}/${name}.stamp)
+    add_custom_command(OUTPUT ${stamp}
+      COMMAND ${command} -DSTAMP=${stamp} -P ${CMAKE_CURRENT_SOURCE_DIR}/${script}
+      DEPENDS ${HUD_TEST_DEPS_${name}} ${script} test/common.cmake
+      COMMENT "Testing ${name}" VERBATIM)
+    list(APPEND HUD_TEST_STAMPS ${stamp})
+    list(APPEND HUD_TEST_NAMES ${name})
+  endif()
+endforeach()
+if(HUD_TEST_AFTER_BUILD)
+  list(JOIN HUD_TEST_NAMES "," names)
+  add_custom_command(OUTPUT ${HUD_TEST_OUT}/summary.stamp
+    COMMAND ${CMAKE_COMMAND} -DOUT=${HUD_TEST_OUT} -DGROUPS=${names} -DSTAMP=${HUD_TEST_OUT}/summary.stamp
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/test/summary.cmake
+    DEPENDS ${HUD_TEST_STAMPS} test/summary.cmake COMMENT "Test summary" VERBATIM)
+  add_custom_target(hud-tests ALL DEPENDS ${HUD_TEST_OUT}/summary.stamp)
+endif()

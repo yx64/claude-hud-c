@@ -26,7 +26,7 @@ static const char BUILD[] = __DATE__ " " __TIME__;
 
 typedef struct {
     uint64_t magic;
-    uint64_t off;  // at byte 8, where test/compare/cache.mjs reads it
+    uint64_t off;  // at byte 8, where test/cache.cmake and test/compare/cache.mjs read it
     uint64_t volume, file;
     uint64_t head, tail;  // hashes of the transcript's first window and of the window before off
     uint64_t size;        // of the state file
