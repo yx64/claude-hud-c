@@ -7,7 +7,8 @@
 # source tree of the version in compare/common.mjs, with its dist/ built; node 24 runs it. Each case
 # is also run under other time zones (and, off Windows, another locale), and one whose output
 # changes with them is refused: the expected files must hold on every machine. Off Windows, output
-# that differs from expected.out goes to expected-posix.out.
+# that differs from expected.out goes to expected-posix.out, and on macOS output that differs from
+# what applies to POSIX goes to expected-darwin.out.
 #
 # A case is a directory test/cases/<Group>/<Case>. Each file below is taken from the case directory,
 # else from the group directory, else from test/cases, so that cases share what they have in common:
@@ -25,11 +26,12 @@
 #                      left out of a commit would pass on the machine that has it and fail elsewhere
 #   setup.cmake        included after the copies, with HUD_DIR the work directory (a git repository
 #                      and the like)
-#   expected.out       the canonical stdout (common.cmake: hud_canon); expected-win32.out or
-#                      expected-posix.out instead where the platforms differ
+#   expected.out       the canonical stdout (common.cmake: hud_canon); expected-win32.out,
+#                      expected-posix.out or expected-darwin.out instead where the platforms differ.
+#                      macOS takes expected-darwin.out, else expected-posix.out, else expected.out
 #   expected.files/    the canonical files the refresh writes under plugins/claude-hud (the config
-#                      aside); none means it writes none. expected-win32.files/ or expected-posix.files/
-#                      likewise
+#                      aside); none means it writes none. expected-win32.files/, expected-posix.files/
+#                      or expected-darwin.files/ likewise
 #   expected.err       instead of the two above: the test build exits 3 (input it does not reproduce
 #                      exactly) with this text in its stderr; upstream is not asked
 # Every case file holds the placeholders of common.cmake (hud_subst).
@@ -44,10 +46,14 @@ set(hud_test ${BIN}/claude-hud-c-test${HUD_EXE_SUFFIX})
 if(NOT EXISTS ${hud_test})
   message(FATAL_ERROR "run.cmake: missing ${hud_test}; build first")
 endif()
+# The platforms whose own expected files apply here, most specific first. macOS has its own where upstream
+# prints something there only (process.platform "darwin"), and takes the POSIX ones otherwise.
 if(CMAKE_HOST_WIN32)
-  set(platform win32)
+  set(platforms win32)
+elseif(CMAKE_HOST_APPLE)
+  set(platforms darwin posix)
 else()
-  set(platform posix)
+  set(platforms posix)
 endif()
 
 if(DEFINED REFERENCE)
@@ -77,12 +83,22 @@ function(case_file case name out)
   set(${out} "${f}" PARENT_SCOPE)
 endfunction()
 
-# The platform's own variant of an expected file or directory, else the common one.
+# The variant of an expected file or directory for the first of <Platforms> that has one, else the common
+# one.
+function(expected_path_in platform_list case name ext out)
+  set(p ${cases_dir}/${case}/${name}${ext})
+  foreach(platform IN LISTS platform_list)
+    if(EXISTS ${cases_dir}/${case}/${name}-${platform}${ext})
+      set(p ${cases_dir}/${case}/${name}-${platform}${ext})
+      break()
+    endif()
+  endforeach()
+  set(${out} ${p} PARENT_SCOPE)
+endfunction()
+
+# The variant that applies here.
 function(expected_path case name ext out)
-  set(p ${cases_dir}/${case}/${name}-${platform}${ext})
-  if(NOT EXISTS ${p})
-    set(p ${cases_dir}/${case}/${name}${ext})
-  endif()
+  expected_path_in("${platforms}" ${case} ${name} ${ext} p)
   set(${out} ${p} PARENT_SCOPE)
 endfunction()
 
@@ -206,20 +222,30 @@ endfunction()
 
 # Writes the expected files of <Case> from the reference run left in <Out>.
 function(update_expected case out)
+  list(GET platforms 0 platform)
   set(own_out ${cases_dir}/${case}/expected-${platform}.out)
   set(own_files ${cases_dir}/${case}/expected-${platform}.files)
   if(NOT EXISTS ${own_out})
-    set(own_out ${cases_dir}/${case}/expected.out)
-    set(own_files ${cases_dir}/${case}/expected.files)
-    # Off Windows, output unlike the common expectation becomes the platform's own.
-    if(NOT CMAKE_HOST_WIN32 AND EXISTS ${own_out})
-      read_expected(${own_out} common)
+    # What applies here while this platform has none of its own: on macOS the POSIX variant, else the
+    # common one.
+    set(inherited ${platforms})
+    list(REMOVE_AT inherited 0)
+    expected_path_in("${inherited}" ${case} expected .out base_out)
+    expected_path_in("${inherited}" ${case} expected .files base_files)
+    # Off Windows, output unlike that becomes the platform's own.
+    set(keep_base TRUE)
+    if(NOT CMAKE_HOST_WIN32 AND EXISTS ${base_out})
+      read_expected(${base_out} common)
       file(READ ${out}.out now)
       if(NOT common STREQUAL now)
-        set(own_out ${cases_dir}/${case}/expected-posix.out)
-        set(own_files ${cases_dir}/${case}/expected-posix.files)
-        hud_warn("${case}: output differs from expected.out here; written to expected-posix.out")
+        set(keep_base FALSE)
+        get_filename_component(base_name ${base_out} NAME)
+        hud_warn("${case}: output differs from ${base_name} here; written to expected-${platform}.out")
       endif()
+    endif()
+    if(keep_base)
+      set(own_out ${base_out})
+      set(own_files ${base_files})
     endif()
   endif()
   file(COPY_FILE ${out}.out ${own_out})
