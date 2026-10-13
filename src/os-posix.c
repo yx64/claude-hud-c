@@ -389,14 +389,15 @@ static void ensure_dir(us dir) {
 
 void os_mkdir(us dir) { mkdir(u8(dir), 0777); }
 
+// Readable by the owner only, as upstream writes the ledger, the speed cache and the usage snapshot.
 bool write_bytes(us path, const void *p, size_t n, double mtime, int mode) {
     const char *f = u8(path);
     int flags = O_WRONLY | O_CREAT | O_CLOEXEC | (mode == WRITE_NEW ? O_EXCL : O_TRUNC);
-    int fd = open(f, flags, 0666);
+    int fd = open(f, flags, 0600);
     // The directory is made only once the first attempt says it is missing.
     if (fd < 0 && errno == ENOENT) {
         ensure_dir(dir_of(path));
-        fd = open(f, flags, 0666);
+        fd = open(f, flags, 0600);
     }
     if (fd < 0) return false;
     bool ok = write_all(fd, p, n);
