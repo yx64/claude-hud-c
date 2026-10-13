@@ -197,6 +197,7 @@ void load_config(Config *c, us claude_dir, us home) {
 
     // migrateLegacyLayout: v0.0.x's `layout`, a string or an object, when lineLayout is absent
     jv line_layout = top("lineLayout"), separators = top("showSeparators"), levels = top("pathLevels");
+    Section lay = section("layout");
     jv layout = top("layout");
     bool legacy_compact = false;
     if (layout && !line_layout) {
@@ -205,7 +206,7 @@ void load_config(Config *c, us claude_dir, us home) {
             separators = nullptr;
             c->show_separators = jstr_eq(layout, "separators");
         } else if (jis_obj(layout)) {
-            jv ll = jget(layout, "lineLayout"), ss = jget(layout, "showSeparators"), pl = jget(layout, "pathLevels");
+            jv ll = get(lay, "lineLayout"), ss = get(lay, "showSeparators"), pl = get(lay, "pathLevels");
             if (jis_str(ll)) line_layout = ll;
             if (ss && yyjson_is_bool(ss)) separators = ss;
             if (jis_num(pl) || jstr_eq(pl, "full")) levels = pl;
