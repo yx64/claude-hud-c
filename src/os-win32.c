@@ -160,7 +160,9 @@ double os_now_ms(void) {
 bool local_time(double ms, ltime *o) {
     static DYNAMIC_TIME_ZONE_INFORMATION tz;
     static bool init;
-    if (!isfinite(ms) || ms < 0) return false;
+    // From 1970 to FILETIME's end in 30828; past that the arithmetic below would wrap around to a
+    // plausible date.
+    if (!(ms >= 0 && ms <= 910692730085477)) return false;
     if (!init) {
         GetDynamicTimeZoneInformation(&tz);
         init = true;

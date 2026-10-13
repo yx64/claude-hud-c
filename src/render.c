@@ -1033,12 +1033,7 @@ bool init_locale(void) {
     return l >= 0;
 }
 
-static us time_str(double ms) {
-    ltime lt;
-    if (!local_time(ms, &lt)) {
-        UNSUPPORTED("unrepresentable time");
-        return US_EMPTY;
-    }
+static us time_str(ltime lt) {
     int hc = CF->d.hour_cycle, h = lt.h;
     bool twelve = g_locale == 1 ? (hc == HC_AUTO || hc == HC_H11 || hc == HC_H12) : (hc == HC_H11 || hc == HC_H12);
     int shown = h;
@@ -1054,9 +1049,7 @@ static us time_str(double ms) {
     return CAT(core, h < 12 ? US(" AM") : US(" PM"));
 }
 
-static us date_str(double ms) {
-    ltime lt;
-    local_time(ms, &lt);
+static us date_str(ltime lt) {
     static const us mon[] = {US_INIT("Jan"), US_INIT("Feb"), US_INIT("Mar"), US_INIT("Apr"), US_INIT("May"), US_INIT("Jun"),
                              US_INIT("Jul"), US_INIT("Aug"), US_INIT("Sep"), US_INIT("Oct"), US_INIT("Nov"), US_INIT("Dec")};
     return g_locale == 0 ? CAT(us_int(lt.mo), US("月"), us_int(lt.d), US("日")) : CAT(mon[lt.mo - 1], US(" "), us_int(lt.d));
@@ -1065,10 +1058,13 @@ static us date_str(double ms) {
 // Wall-clock time such as `at 14:30`, with the date when it isn't today.
 static us format_absolute(double at, int pattern) {
     ltime a, b;
-    us ts = time_str(at);
-    if (local_time(at, &a) && local_time(C->now, &b) && a.y == b.y && a.mo == b.mo && a.d == b.d)
-        return interpolate(t(pattern), "time", ts);
-    return interpolate(t(pattern), "time", CAT(date_str(at), US(" "), ts));
+    if (!local_time(at, &a)) {
+        UNSUPPORTED("unrepresentable time");
+        return US_EMPTY;
+    }
+    us ts = time_str(a);
+    if (local_time(C->now, &b) && a.y == b.y && a.mo == b.mo && a.d == b.d) return interpolate(t(pattern), "time", ts);
+    return interpolate(t(pattern), "time", CAT(date_str(a), US(" "), ts));
 }
 
 static us format_duration(double ms) {
@@ -1329,9 +1325,10 @@ static us session_time_line(void) {
     Transcript *tr = C->t;
     us parts[2];
     int n = 0;
-    if (CF->d.show_session_start && !isnan(tr->session_start)) {
-        ltime lt;
-        local_time(tr->session_start, &lt);
+    ltime lt;
+    bool started = CF->d.show_session_start && !isnan(tr->session_start);
+    if (started && !local_time(tr->session_start, &lt)) UNSUPPORTED("unrepresentable time");
+    else if (started) {
         sb b = {0};
         sb_int(&b, lt.y);
         sb_ch(&b, '-'), sb_pad(&b, lt.mo, 2);

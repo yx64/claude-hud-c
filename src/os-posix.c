@@ -141,7 +141,7 @@ double os_now_ms(void) {
 }
 
 bool local_time(double ms, ltime *o) {
-    if (!isfinite(ms) || ms < 0) return false;
+    if (!(ms >= 0 && ms <= 8.64e15)) return false;  // from 1970 to a JS Date's end, so time_t holds it
     time_t s = (time_t)floor(ms / 1000);
     struct tm tm;
     if (!localtime_r(&s, &tm)) return false;
