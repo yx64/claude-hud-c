@@ -6,7 +6,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { checkTestBuild, contents, reference, restore, run, runReference, snapshot } from './common.mjs';
+import { checkTestBuild, contents, matches, reference, restore, run, runReference, snapshot } from './common.mjs';
 
 const [hudExe, refArg, workDir, maxArg] = process.argv.slice(2);
 const maxCases = Number(maxArg ?? Infinity);
@@ -206,11 +206,11 @@ async function worker(k) {
       if (rc.code === 3) {
         const why = rc.err.trim();
         stats.unsupported[why] = (stats.unsupported[why] ?? 0) + 1;
-        continue;
+        if (ref.kind === 'upstream') continue;
       }
       stats.cTime += tc, stats.nTime += tn;
       const filesSame = contents(sc) === contents(sn);
-      const ok = rc.code === 0 && rc.out.equals(rn.out) && filesSame;
+      const ok = matches(ref, rc, rn) && filesSame;
       if (ok) stats.equal++;
       else {
         stats.diff++;

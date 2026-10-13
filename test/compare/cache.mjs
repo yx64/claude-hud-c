@@ -11,7 +11,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { checkTestBuild, reference, run, runReference } from './common.mjs';
+import { checkTestBuild, matches, reference, run, runReference } from './common.mjs';
 
 const [hudExe, refArg, workDirArg, maxArg] = process.argv.slice(2);
 const ref = reference(refArg);
@@ -46,15 +46,12 @@ async function refresh(tp, cache, extraEnv = {}) {
   return { rc, rn };
 }
 
-// Same output, or both builds report the same unsupported case (an upstream reference has none).
+// Same output, or both builds report the same unsupported case (common.mjs: matches).
 function compare(label, { rc, rn }) {
   stats.steps++;
-  if (rc.code === 3 && ref.kind === 'upstream') {
-    stats.unsupported++;
-    return true;
-  }
-  const same = rc.code === rn.code && rc.out.equals(rn.out) && (rc.code !== 3 || rc.err === rn.err);
   if (rc.code === 3) stats.unsupported++;
+  if (rc.code === 3 && ref.kind === 'upstream') return true;
+  const same = matches(ref, rc, rn);
   if (same) stats.equal++;
   else {
     stats.diff++;

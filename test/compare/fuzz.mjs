@@ -7,7 +7,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { checkTestBuild, contents, reference, restore, run, runReference, snapshot } from './common.mjs';
+import { checkTestBuild, contents, matches, reference, restore, run, runReference, snapshot } from './common.mjs';
 
 const [hudExe, refArg, workDir, casesArg, seedArg, fakeJj] = process.argv.slice(2);
 const total = Number(casesArg);
@@ -273,9 +273,9 @@ async function worker(k) {
     if (rc.code === 3) {
       const why = rc.err.trim();
       stats.unsupported[why] = (stats.unsupported[why] ?? 0) + 1;
-      continue;
+      if (ref.kind === 'upstream') continue;
     }
-    const ok = rc.code === 0 && rc.out.equals(rn.out) && contents(sc) === contents(sn) && jjArgs[0] === jjArgs[1];
+    const ok = matches(ref, rc, rn) && contents(sc) === contents(sn) && jjArgs[0] === jjArgs[1];
     if (ok) stats.equal++;
     else {
       stats.diff++;
@@ -300,4 +300,5 @@ console.log(`reference ${ref.kind} ${ref.path}`);
 console.log(`cases ${stats.cases}, equal ${stats.equal}, diff ${stats.diff}`);
 console.log('unsupported:', JSON.stringify(stats.unsupported));
 for (const d of kept) console.log('kept', d);
-process.exitCode = stats.diff > 0 ? 1 : 0;
+// Nothing compared, as when every case is reported unsupported, is no pass.
+process.exitCode = stats.diff > 0 || stats.equal + stats.diff === 0 ? 1 : 0;

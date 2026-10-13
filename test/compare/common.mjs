@@ -54,6 +54,16 @@ export function run(cmd, args, env, input) {
   });
 }
 
+// Whether a refresh of the test build matches the reference's, written files aside. Upstream never
+// reports an unsupported case (exit 3), so against it the callers set those aside before asking. An
+// earlier test build does, and there they count: one side giving up, or giving up for another reason,
+// is a change. A crash on both sides is never a match.
+export function matches(ref, rc, rn) {
+  if (!rc.out.equals(rn.out)) return false;
+  if (ref.kind === 'upstream') return rc.code === 0;
+  return rc.code === rn.code && (rc.code === 0 || (rc.code === 3 && rc.err === rn.err));
+}
+
 export const runReference = (ref, env, input) => ref.kind === 'exe'
   ? run(ref.path, [], env, input)
   : run(process.execPath, ['--import', pathToFileURL(fakeClock).href, runner, ref.path], env, input);

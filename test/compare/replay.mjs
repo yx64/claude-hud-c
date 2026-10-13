@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { checkTestBuild, contents, reference, restore, run, runReference, snapshot } from './common.mjs';
+import { checkTestBuild, contents, matches, reference, restore, run, runReference, snapshot } from './common.mjs';
 
 const [hudExe, refArg, capDir, workDir] = process.argv.slice(2);
 const ref = reference(refArg);
@@ -45,7 +45,9 @@ for (const f of files) {
   if (rc.code === 3) {
     unsupported++;
     console.log(f, rc.err.trim());
-  } else if (rc.code === 0 && rc.out.equals(rn.out) && contents(sc) === contents(sn)) equal++;
+  }
+  if (rc.code === 3 && ref.kind === 'upstream') continue;
+  if (matches(ref, rc, rn) && contents(sc) === contents(sn)) equal++;
   else {
     diff++;
     console.log(f, `DIFF\n--- C\n${rc.out}--- reference\n${rn.out}--- files C\n${contents(sc)}\n--- files reference\n${contents(sn)}`);
@@ -53,4 +55,4 @@ for (const f of files) {
 }
 console.log(`reference ${ref.kind} ${ref.path}`);
 console.log(`captured ${files.length}, equal ${equal}, diff ${diff}, unsupported ${unsupported}`);
-process.exitCode = diff > 0 || equal + unsupported === 0 ? 1 : unsupported > 0 ? 2 : 0;
+process.exitCode = diff > 0 || equal + diff === 0 ? 1 : unsupported > 0 ? 2 : 0;
