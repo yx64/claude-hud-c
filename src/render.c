@@ -788,10 +788,8 @@ static us git_files_line(void) {
     bool has_cwd = jtruthy(cwdv) && jis_str(cwdv);
     us cwd = has_cwd ? jstr(cwdv) : US_EMPTY;
     int n = st->nfiles;
-    GitFile **files = arena_alloc(sizeof(GitFile *) * (size_t)(n + 1));
     double *mt = arena_alloc(sizeof(double) * (size_t)(n + 1));
     for (int i = 0; i < n; i++) {
-        files[i] = &st->files[i];
         us r;
         mt[i] = 0;
         if (has_cwd && inside_cwd(cwd, st->files[i].full, &r)) {
@@ -814,7 +812,7 @@ static us git_files_line(void) {
     us entries[9];
     int ne = 0;
     for (int k = 0; k < n && k < 6; k++) {
-        GitFile *f = files[ord[k]];
+        GitFile *f = &st->files[ord[k]];
         us (*color)(us) = f->type == TF_ADDED ? green : f->type == TF_DELETED ? red : yellow;
         static const us prefix[] = {[TF_ADDED] = US_INIT("+"), [TF_DELETED] = US_INIT("-"), [TF_MODIFIED] = US_INIT("~")};
         us r;
@@ -1302,7 +1300,6 @@ static us prompt_cache_line(void) {
     double remaining = jtruthy(jget(cache, "warm")) ? expires - C->now : 0;
     us value;
     if (!(remaining > 0)) {
-        if (isnan(remaining)) UNSUPPORTED("prompt cache expiry that is not a number");
         value = label(CAT(US("⏱ "), t(T_EXPIRED)));
     } else {
         jv ttl = jget(cache, "ttl");
@@ -1377,10 +1374,11 @@ static us shorten_tool_name(us raw, double max) {
     us name = sanitize_display(raw);
     if (max == 0) return name;
     us shown = name;
-    // /^mcp__.+__.+$/ then split('__').pop()
+    // /^mcp__.+__.+$/ then split('__').pop(); of the line terminators . does not match, only these
+    // two outlive sanitizing
     if (us_starts_c(name, "mcp__")) {
         bool term = false;
-        for (int32_t i = 0; i < name.n; i++) term |= name.p[i] == '\n' || name.p[i] == '\r' || name.p[i] == 0x2028 || name.p[i] == 0x2029;
+        for (int32_t i = 0; i < name.n; i++) term |= name.p[i] == 0x2028 || name.p[i] == 0x2029;
         bool m = false;
         if (!term)
             for (int32_t i = 6; i + 2 < name.n && !m; i++) m = name.p[i] == '_' && name.p[i + 1] == '_';
