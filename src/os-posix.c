@@ -471,15 +471,6 @@ us path_resolve(us p) {
     return sb_done(&b);
 }
 
-us path_join_n(int count, const us *parts) {
-    sb b = {0};
-    for (int i = 0; i < count; i++) {
-        if (i && b.n && b.p[b.n - 1] != '/') sb_ch(&b, '/');
-        sb_us(&b, parts[i]);
-    }
-    return path_resolve(sb_done(&b));
-}
-
 bool path_is_absolute(us p) { return p.n && p.p[0] == '/'; }
 
 us dir_of(us p) {

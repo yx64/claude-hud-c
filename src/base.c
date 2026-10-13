@@ -592,6 +592,16 @@ double date_from_json(jv v) {
 
 // ---- files ----
 
+// The same on every platform; only the separator and path_resolve differ.
+us path_join_n(int count, const us *parts) {
+    sb b = {0};
+    for (int i = 0; i < count; i++) {
+        if (i && b.n && !is_sep(b.p[b.n - 1])) sb_ch(&b, OS_SEP);
+        sb_us(&b, parts[i]);
+    }
+    return path_resolve(sb_done(&b));
+}
+
 char *read_file(us path, size_t *n) {
     void *h = open_read(path);
     if (!h) return nullptr;
