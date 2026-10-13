@@ -117,8 +117,7 @@ double os_run_ms(void) {
 // ---- environment and time ----
 
 us env_get(const char *name) {
-    wchar_t wn[128];
-    MultiByteToWideChar(CP_UTF8, 0, name, -1, wn, 128);
+    const wchar_t *wn = wz(us_c(name));
     DWORD n = GetEnvironmentVariableW(wn, nullptr, 0);
     if (!n) return US_EMPTY;
     uint16_t *p = arena_alloc((size_t)n * 2);
@@ -127,8 +126,7 @@ us env_get(const char *name) {
 }
 
 bool env_has(const char *name) {
-    wchar_t wn[128];
-    MultiByteToWideChar(CP_UTF8, 0, name, -1, wn, 128);
+    const wchar_t *wn = wz(us_c(name));
     SetLastError(0);
     DWORD n = GetEnvironmentVariableW(wn, nullptr, 0);
     return n > 0 || GetLastError() != ERROR_ENVVAR_NOT_FOUND;
@@ -579,7 +577,7 @@ int os_run(us exe, const char *const *args, us cwd, const char *const *env, uint
                                   env[0] ? env_block(env) : nullptr, wz(cwd), &si, &pi);
     CloseHandle(wr);
     CloseHandle(nul);
-    Reader r = {rd, overflow, arena_alloc(max_out + 1), 0, max_out, false};
+    Reader r = {rd, overflow, arena_alloc(max_out + 1), 0, max_out};
     HANDLE th = nullptr;
     if (started && AssignProcessToJobObject(job, pi.hProcess)) th = CreateThread(nullptr, 0, read_all, &r, 0, nullptr);
     if (!th) {
