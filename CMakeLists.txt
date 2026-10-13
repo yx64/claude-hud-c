@@ -110,6 +110,15 @@ else()
   message(FATAL_ERROR "claude-hud-c has a platform layer for Windows (src/os-win32.c) and POSIX (src/os-posix.c) only")
 endif()
 
+# A saved parse state is taken up only by the build that wrote it, told apart by the time
+# transcript-state.c was compiled. An incremental build has to recompile that file whenever any source
+# changes, or the new build would take up states the old one saved.
+file(GLOB HUD_HEADERS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/*.h ${CMAKE_CURRENT_SOURCE_DIR}/vendor/*.h)
+set(HUD_ALL_SOURCES ${HUD_SOURCES} ${HUD_PLATFORM_SOURCES})
+list(FILTER HUD_ALL_SOURCES INCLUDE REGEX "\\.c$")
+list(TRANSFORM HUD_ALL_SOURCES PREPEND ${CMAKE_CURRENT_SOURCE_DIR}/)
+set_source_files_properties(src/transcript-state.c PROPERTIES OBJECT_DEPENDS "${HUD_ALL_SOURCES};${HUD_HEADERS}")
+
 # One executable per variant, from the same sources, differing only in compile-time macros:
 #   HUD_C_TEST                 test build: frozen clock and memory figures, no run time on the last line,
 #                              unreproduced input reported with exit code 3
