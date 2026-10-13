@@ -231,11 +231,6 @@ size_t wcslen(const wchar_t *s) {
     return (size_t)(p - s);
 }
 
-int wcscmp(const wchar_t *a, const wchar_t *b) {
-    for (; *a && *a == *b; a++, b++) {}
-    return *a < *b ? -1 : *a > *b;
-}
-
 int _wcsnicmp(const wchar_t *a, const wchar_t *b, size_t n) {
     for (; n; a++, b++, n--) {
         int x = lower_ascii(*a), y = lower_ascii(*b);
