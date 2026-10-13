@@ -15,13 +15,13 @@ om_ent *om_oldest(omap *m);
 enum { ST_RUNNING, ST_COMPLETED, ST_ERROR };
 enum { TD_PENDING, TD_IN_PROGRESS, TD_COMPLETED };
 
-// Fields upstream keeps as raw values hold a copy when they are strings; the *_str flag says
-// whether they were.
-typedef struct { us name, target; bool name_str, has_target; int status; } Tool;
+// No presence flags: a string is empty where upstream has no usable string, and a time is NaN
+// while unknown.
+typedef struct { us name, target; int status; } Tool;
 
 typedef struct {
     us type, desc, model;
-    bool type_str, desc_str, has_model, background, has_end;
+    bool background;
     int status;
     double start, end;
 } Agent;
@@ -38,9 +38,8 @@ typedef struct {
     Todo *todos;
     int ntodos;
     double session_start, last_assistant_at;  // NaN when absent
-    bool has_advisor, has_last_model, has_context_tokens, has_session_tokens;
     us advisor, last_model;
-    int ultracode;  // -1 undefined, 0 false, 1 true
+    bool ultracode;
     int compactions;
     double context_tokens;
     double tok_in, tok_out, tok_cc, tok_cr;

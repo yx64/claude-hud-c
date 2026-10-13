@@ -128,7 +128,7 @@ static void run(const char *buf, size_t n, sb *out) {
     ctx.input = root;
     if (has_extra_cmd() && us_trim(env_get("CLAUDE_HUD_ALLOW_EXTRA_CMD")).n) UNSUPPORTED("--extra-cmd");
 
-    Transcript tr = {.session_start = NAN, .last_assistant_at = NAN, .ultracode = -1};
+    Transcript tr = {.session_start = NAN, .last_assistant_at = NAN};
     if (needs_transcript(&cfg, root)) {
         jv tp = jget(root, "transcript_path");
         if (jis_str(tp)) parse_transcript(jstr(tp), &tr);

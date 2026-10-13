@@ -457,7 +457,7 @@ typedef struct { double percent, tokens, size; } ContextUse;
 static ContextUse context_usage(void) {
     double live = total_tokens();
     Transcript *tr = C->t;
-    double tokens = live > 0 ? live : tr->has_context_tokens ? tr->context_tokens : 0;
+    double tokens = live > 0 ? live : tr->context_tokens;
     double acw = CF->d.auto_compact_window;
     if (acw > 0) return (ContextUse){to_percent(tokens / acw * 100), tokens, acw};
     jv sz = sget("context_window", "context_window_size");
@@ -512,7 +512,7 @@ static us model_name(void) {
 static us resolve_model_name(void) {
     us stdin_model = model_name();
     Transcript *tr = C->t;
-    if (CF->d.model_source == MS_STDIN || !tr->has_last_model) return stdin_model;
+    if (CF->d.model_source == MS_STDIN || !tr->last_model.n) return stdin_model;
     if (CF->d.model_source == MS_TRANSCRIPT) return tr->last_model;
     us low = us_lower(tr->last_model);
     return us_starts_c(low, "claude-") || us_starts_c(low, "anthropic.") ? stdin_model : tr->last_model;
@@ -609,7 +609,7 @@ static bool effort(us *level, us *symbol) {
                                         "__lookupgetter__", "__lookupsetter__"};
     for (size_t i = 0; i < countof(proto); i++)
         if (us_eq_c(l, proto[i])) UNSUPPORTED("effort level named like an Object.prototype member");
-    *level = C->t->ultracode == 1 ? CAT(US("ultracode("), l, US(")")) : l;
+    *level = C->t->ultracode ? CAT(US("ultracode("), l, US(")")) : l;
     return true;
 }
 
@@ -898,7 +898,7 @@ static us prettify_advisor(us id) {
 static us advisor_part(void) {
     if (!CF->d.show_advisor) return US_EMPTY;
     us name = advisor_clean(CF->d.advisor_override);
-    if (!name.n) name = advisor_clean(prettify_advisor(C->t->has_advisor ? advisor_clean(C->t->advisor) : US_EMPTY));
+    if (!name.n) name = advisor_clean(prettify_advisor(advisor_clean(C->t->advisor)));
     return name.n ? CAT(label(CAT(t(T_ADVISOR), US(":"))), US(" "), name) : US_EMPTY;
 }
 
@@ -975,7 +975,6 @@ static int config_count_parts(us mcp_suffix, us *out) {
 
 static us session_tokens_summary(us prefix) {
     Transcript *tr = C->t;
-    if (!tr->has_session_tokens) return US_EMPTY;
     double total = tr->tok_in + tr->tok_out + tr->tok_cc + tr->tok_cr;
     if (total == 0) return US_EMPTY;
     us parts = CAT(t(T_IN), US(": "), format_tokens(tr->tok_in), US(", "), t(T_OUT), US(": "), format_tokens(tr->tok_out));
@@ -1417,7 +1416,7 @@ static us tools_line(void) {
     for (int i = 0; i < n; i++)
         if (tools[i]->status == ST_RUNNING) running[nr++] = tools[i];
     for (int i = nr > 2 ? nr - 2 : 0; i < nr; i++) {
-        us target = running[i]->has_target ? label(CAT(US(": "), shorten_path(running[i]->target))) : US_EMPTY;
+        us target = running[i]->target.n ? label(CAT(US(": "), shorten_path(running[i]->target))) : US_EMPTY;
         parts[np++] = CAT(yellow(US("◐")), US(" "), cyan(shorten_tool_name(running[i]->name, CF->d.tool_name_max)), target);
     }
     us names[32];
@@ -1546,7 +1545,7 @@ static bool short_model(us m, us *out) {
 }
 
 static us agent_elapsed(Agent *a) {
-    double ms = fmax(0, (a->has_end ? a->end : C->now) - a->start);
+    double ms = fmax(0, (isnan(a->end) ? C->now : a->end) - a->start);
     if (ms < 1000) return US("<1s");
     if (ms < 60000) return CAT(num(js_round(ms / 1000)), US("s"));
     double secs = floor(ms / 1000), mins = floor(secs / 60);
@@ -1562,7 +1561,7 @@ static us agents_line(void) {
     for (int i = 0; i < tr->nagents; i++) {
         Agent *a = &tr->agents[i];
         if (a->status == ST_RUNNING) run[nr++] = a;
-        else if (a->status == ST_COMPLETED && a->has_end && isfinite(a->end) && a->end <= C->now && C->now - a->end <= 60000) done[nd++] = a;
+        else if (a->status == ST_COMPLETED && isfinite(a->end) && a->end <= C->now && C->now - a->end <= 60000) done[nd++] = a;
     }
     for (int i = nr > 3 ? nr - 3 : 0; i < nr; i++) shown[ns++] = run[i];
     int slots = 3 - ns < 2 ? 3 - ns : 2;
@@ -1571,10 +1570,10 @@ static us agents_line(void) {
     for (int i = 0; i < ns; i++) {
         Agent *a = shown[i];
         us icon = a->status == ST_RUNNING ? yellow(US("◐")) : green(US("✓"));
-        us type = a->type_str ? truncate_string(us_trim(sanitize_display(a->type)), 24) : US_EMPTY;
+        us type = truncate_string(us_trim(sanitize_display(a->type)), 24);
         us model;
-        bool hm = a->has_model && short_model(a->model, &model);
-        us desc = a->desc_str ? truncate_string(us_trim(sanitize_display(a->desc)), 40) : US_EMPTY;
+        bool hm = a->model.n && short_model(a->model, &model);
+        us desc = truncate_string(us_trim(sanitize_display(a->desc)), 40);
         lines[i] = CAT(icon, US(" "), magenta(type.n ? type : US("agent")), hm ? CAT(US(" "), label(CAT(US("["), model, US("]")))) : US_EMPTY,
                        desc.n ? label(CAT(US(": "), desc)) : US_EMPTY, US(" "), label(CAT(US("("), agent_elapsed(a), US(")"))));
     }

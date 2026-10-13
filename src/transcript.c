@@ -323,10 +323,10 @@ static void tool_use(Parser *s, jv block, double at) {
     if (jstr_eq(name, "Task") || jstr_eq(name, "Agent")) {
         Agent a = {.status = ST_RUNNING, .start = at, .end = NAN};
         jv st = jget(input, "subagent_type"), d = jget(input, "description");
-        if (jis_nullish(st)) a.type = US("agent"), a.type_str = true;
-        else if (jis_str(st)) a.type = jstr(st), a.type_str = true;
-        if (jis_str(d)) a.desc = jstr(d), a.desc_str = true;
-        a.has_model = sanitize_model(jget(input, "model"), &a.model);
+        if (jis_nullish(st)) a.type = US("agent");
+        else if (jis_str(st)) a.type = jstr(st);
+        if (jis_str(d)) a.desc = jstr(d);
+        sanitize_model(jget(input, "model"), &a.model);
         a.background = jis_true(jget(input, "run_in_background"));
         bool created;
         om_ent *en = om_put(&s->agents, k, kn, &created);
@@ -371,9 +371,9 @@ static void tool_use(Parser *s, jv block, double at) {
         us content;
         if (text_of(jget(input, "subject"), &content) || text_of(jget(input, "description"), &content)) s->todos.p[i].content = content;
     } else {
-        Tool tool = {.name = jstr(name), .name_str = jis_str(name), .status = ST_RUNNING};
-        if (!tool.name_str) UNSUPPORTED("non-string tool name");
-        tool.has_target = tool_target(name, input, &tool.target);
+        Tool tool = {.name = jstr(name), .status = ST_RUNNING};
+        if (!jis_str(name)) UNSUPPORTED("non-string tool name");
+        tool_target(name, input, &tool.target);
         bool created;
         om_ent *en = om_put(&s->tools, k, kn, &created);
         if (created) {
@@ -393,7 +393,7 @@ static void tool_result(Parser *s, jv block, jv entry, double at) {
         bool err = jtruthy(jget(block, "is_error"));
         tool->status = err ? ST_ERROR : ST_COMPLETED;
         us srv;
-        if (tool->name_str && mcp_server(tool->name, &srv)) {
+        if (mcp_server(tool->name, &srv)) {
             const char *sk;
             uint32_t skn;
             str_key(srv, &sk, &skn);
@@ -409,9 +409,9 @@ static void tool_result(Parser *s, jv block, jv entry, double at) {
         Agent *a = &s->agentv.p[ae->i];
         jv tur = jget(entry, "toolUseResult");
         us m;
-        if (sanitize_model(jget(tur, "resolvedModel"), &m)) a->model = m, a->has_model = true;
+        if (sanitize_model(jget(tur, "resolvedModel"), &m)) a->model = m;
         if (jis_true(jget(tur, "isAsync")) || jstr_eq(jget(tur, "status"), "async_launched")) a->background = true;
-        if (!a->background) a->end = at, a->has_end = true;
+        if (!a->background) a->end = at;
     }
 }
 
@@ -419,10 +419,10 @@ static void assistant(Parser *s, jv e, double at) {
     Transcript *r = s->r;
     if (!isnan(at)) r->last_assistant_at = at;
     jv adv = jget(e, "advisorModel");
-    if (jis_str(adv) && yyjson_get_len(adv)) r->advisor = us_slice(jstr(adv), 0, 64), r->has_advisor = true;
+    if (jis_str(adv) && yyjson_get_len(adv)) r->advisor = us_slice(jstr(adv), 0, 64);
     jv msg = jget(e, "message");
     us m;
-    if (sanitize_model(jget(msg, "model"), &m) && !us_eq_c(m, "<synthetic>")) r->last_model = m, r->has_last_model = true;
+    if (sanitize_model(jget(msg, "model"), &m) && !us_eq_c(m, "<synthetic>")) r->last_model = m;
     jv raw = jget(msg, "usage");
     if (!jtruthy(raw)) {
         s->has_idless = false;
@@ -430,7 +430,7 @@ static void assistant(Parser *s, jv e, double at) {
     }
     double u[4] = {count(jget(raw, "input_tokens")), count(jget(raw, "output_tokens")),
                    count(jget(raw, "cache_creation_input_tokens")), count(jget(raw, "cache_read_input_tokens"))};
-    if (!jis_true(jget(e, "isSidechain"))) r->context_tokens = u[0] + u[2] + u[3], r->has_context_tokens = true;
+    if (!jis_true(jget(e, "isSidechain"))) r->context_tokens = u[0] + u[2] + u[3];
     jv id = jget(msg, "id");
     if (jis_str(id) && yyjson_get_len(id) && u16len(id) <= 128) {
         s->has_idless = false;
@@ -485,20 +485,19 @@ static void on_line(Parser *s, jv e, double now) {
             // onto one.
             bool ultra = j - m == 9;
             for (size_t k = 0; ultra && k < 9; k++) ultra = (c[m + k] | 32) == "ultracode"[k];
-            if (j > m) r->ultracode = ultra ? 1 : 0;
+            if (j > m) r->ultracode = ultra;
         }
     }
     if (jstr_eq(type, "attachment")) {
         jv at_type = jget(jget(e, "attachment"), "type");
-        if (jstr_eq(at_type, "ultra_effort_enter")) r->ultracode = 1;
-        if (jstr_eq(at_type, "ultra_effort_exit")) r->ultracode = 0;
+        if (jstr_eq(at_type, "ultra_effort_enter")) r->ultracode = true;
+        if (jstr_eq(at_type, "ultra_effort_exit")) r->ultracode = false;
     }
     if (jstr_eq(type, "system") && jstr_eq(jget(e, "subtype"), "compact_boundary") && !isnan(at)) {
         r->compactions++;
         jv post = jget(jget(e, "compactMetadata"), "postTokens");
         double d = jnum(post);
-        r->has_context_tokens = jis_num(post) && isfinite(d) && d >= 0;
-        r->context_tokens = r->has_context_tokens ? trunc(d) : 0;
+        r->context_tokens = jis_num(post) && isfinite(d) && d >= 0 ? trunc(d) : 0;
     }
     // A background agent's tool_result lands at launch; its completion is this enqueue.
     jv qc = jget(e, "content");
@@ -558,7 +557,7 @@ const char *g_transcript_state = "unread";
 #endif
 
 void parse_transcript(us path, Transcript *r) {
-    *r = (Transcript){.session_start = NAN, .last_assistant_at = NAN, .ultracode = -1};
+    *r = (Transcript){.session_start = NAN, .last_assistant_at = NAN};
     if (!path.n) return;
     us full = path_resolve(path);
     void *h = open_read(full);
@@ -580,7 +579,7 @@ void parse_transcript(us path, Transcript *r) {
     char *buf = read_rest(h, start, &n);
     if (!buf) {
         os_close(h);
-        *r = (Transcript){.session_start = NAN, .last_assistant_at = NAN, .ultracode = -1};
+        *r = (Transcript){.session_start = NAN, .last_assistant_at = NAN};
         g_unsupported = outer;
         return;
     }
@@ -645,10 +644,10 @@ void parse_transcript(us path, Transcript *r) {
     for (int32_t i = 0; i < s.completions.n; i++) {
         om_ent *q = &s.completions.e[i];
         om_ent *ae = om_get(&s.agents, q->k, q->kn);
-        if (ae && s.agentv.p[ae->i].background) s.agentv.p[ae->i].end = q->d[0], s.agentv.p[ae->i].has_end = true;
+        if (ae && s.agentv.p[ae->i].background) s.agentv.p[ae->i].end = q->d[0];
     }
     for (int32_t i = 0; i < s.agentv.n; i++)
-        if (s.agentv.p[i].has_end) s.agentv.p[i].status = ST_COMPLETED;
+        if (!isnan(s.agentv.p[i].end)) s.agentv.p[i].status = ST_COMPLETED;
 
     r->tools = arena_alloc(sizeof(Tool) * 20);
     for (int32_t i = s.toolv.n > 20 ? s.toolv.n - 20 : 0; i < s.toolv.n; i++) r->tools[r->ntools++] = s.toolv.p[i];
@@ -666,5 +665,4 @@ void parse_transcript(us path, Transcript *r) {
         if (s.usage.e[i].alive)
             for (int k = 0; k < 4; k++) tot[k] += s.usage.e[i].d[k];
     r->tok_in = tot[0], r->tok_out = tot[1], r->tok_cc = tot[2], r->tok_cr = tot[3];
-    r->has_session_tokens = true;
 }
