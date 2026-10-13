@@ -514,13 +514,8 @@ static char **env_block(const char *const *extra) {
 }
 
 // Where a bare name may be, in PATH order, as execvp searches; built before fork, so the child
-// only has to try them.
+// only has to try them. Only bare names come here (os_find_git, os_find_jj).
 static char **candidates(us exe) {
-    if (us_find_ch(exe, '/', 0) >= 0) {
-        char **c = arena_alloc(sizeof(char *) * 2);
-        c[0] = (char *)u8(exe), c[1] = nullptr;
-        return c;
-    }
     const char *path = getenv("PATH");
     if (!path) path = "/usr/local/bin:/usr/bin:/bin";
     size_t n = 1;

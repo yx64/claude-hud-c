@@ -320,10 +320,6 @@ void sb_num(sb *b, double v) {
 void sb_fixed(sb *b, double x, int f) {
     if (isnan(x)) return sb_us(b, US("NaN"));
     if (fabs(x) >= 1e21) return sb_num(b, x);
-    if (f < 0 || f > 17) {
-        UNSUPPORTED("toFixed with more than 17 digits");
-        f = f < 0 ? 0 : 17;
-    }
     bool neg = x < 0;
     if (neg) x = -x;
     uint64_t bits;

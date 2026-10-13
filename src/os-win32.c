@@ -636,11 +636,11 @@ bool os_find_git(us *out) {
         us e = us_trim(us_slice(path, i, j));
         i = j + 1;
         if (e.n >= 2 && e.p[0] == '"' && e.p[e.n - 1] == '"') e = us_slice(e, 1, e.n - 1);
-        if (!e.n || us_find_ch(e, 0, 0) >= 0 || !path_is_absolute(e)) continue;
+        if (!e.n || !path_is_absolute(e)) continue;
         us real;
         if (!real_path(path_join(e, US("git.exe")), &real)) continue;
         fstat_t st = stat_path(real);
-        if (st.ok && st.is_file && path_is_absolute(real)) {
+        if (st.ok && st.is_file) {
             *out = real;
             return true;
         }
