@@ -172,8 +172,6 @@ function(hud_env_reset dir)
   set(ENV{HUD_FAKE_NOW_MS} ${HUD_NOW_MS})
   set(ENV{HUD_FAKE_MEM} ${HUD_MEM})
   set(ENV{GIT_CONFIG_NOSYSTEM} 1)
-  # git fails instead of prompting for credentials, which would hang a test with no one to answer.
-  set(ENV{GIT_TERMINAL_PROMPT} 0)
   file(TO_NATIVE_PATH "${BIN}/fake-jj" jj)
   set(ENV{PATH} "${jj}${HUD_PATH_SEP}${HUD_PATH0}")
   file(MAKE_DIRECTORY ${dir}/claude ${dir}/home ${dir}/proj)
