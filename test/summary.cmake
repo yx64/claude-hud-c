@@ -1,5 +1,6 @@
-# The one line a build prints after its tests: what passed, per group. Each group's driver has left
-# its counts in <OutDir>/<Group>.result (common.cmake: hud_finish). Usage:
+# The one line a build prints after its tests: the totals over all groups. It runs only once every
+# group has passed, so it does not list them; a failing group prints its own line. Each group's
+# driver has left its counts in <OutDir>/<Group>.result (common.cmake: hud_finish). Usage:
 #   cmake -DOUT=<OutDir> -DGROUPS=<Group>,<Group>,... [-DSTAMP=<File>] -P summary.cmake
 foreach(v OUT GROUPS)
   if(NOT DEFINED ${v})
@@ -10,7 +11,6 @@ string(REPLACE "," ";" groups "${GROUPS}")
 set(passed 0)
 set(total 0)
 set(skipped 0)
-set(parts "")
 foreach(g IN LISTS groups)
   if(NOT EXISTS ${OUT}/${g}.result)
     message(FATAL_ERROR "summary.cmake: no ${OUT}/${g}.result; the group has not run to the end")
@@ -24,10 +24,8 @@ foreach(g IN LISTS groups)
   math(EXPR passed "${passed} + ${p}")
   math(EXPR total "${total} + ${t}")
   math(EXPR skipped "${skipped} + ${s}")
-  list(APPEND parts "${g} ${p}/${t}")
 endforeach()
-list(JOIN parts ", " parts)
-set(line "tests: ${passed}/${total} passed (${parts})")
+set(line "tests: ${passed}/${total} passed")
 if(skipped)
   string(APPEND line ", ${skipped} skipped")
 endif()

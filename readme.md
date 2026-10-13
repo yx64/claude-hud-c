@@ -122,7 +122,7 @@ cmake --build <BuildDir>
 ```
 
 The build runs the tests as well and fails when one fails. It prints one summary line, such as
-`tests: 424/424 passed (...)`, or a `FAIL` line per failed check with where the output differs. To build without
+`tests: 424/424 passed`, or a `FAIL` line per failed check with where the output differs. To build without
 them, configure with `-DHUD_TEST_AFTER_BUILD=OFF`; `ctest --test-dir <BuildDir>` runs them at any time.
 
 Copy the executable, downloaded or built (`<BuildDir>/release/claude-hud-c.exe`, `claude-hud-c` off Windows), to a
