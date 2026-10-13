@@ -21,7 +21,8 @@
     <UserHome>\.claude\projects\<ProjectDirName>\<SessionId>.jsonl. Required.
 
 .PARAMETER HudExe
-    The release build to time, in the form <Drive>:\<Dir>\<ProjectName>.exe. Required.
+    The release build to time: the program <ProjectName> under <BuildDir>\release, or a copy of
+    it. Required.
 
 .PARAMETER Rounds
     Measured rounds; one warm-up round is added and discarded.

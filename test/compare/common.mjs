@@ -20,7 +20,7 @@ export function checkTestBuild(exe, ref, c, n) {
   const timed = (r) => r.code === 0 && RUN_TIME.test(r.out.toString());
   const which = timed(c) && !timed(n) ? exe : ref.kind === 'exe' && timed(n) && !timed(c) ? ref.path : null;
   if (which) {
-    console.error(`${which} is not a test build (its output ends with the run time); pass claude-hud-c-test.exe from the build directory`);
+    console.error(`${which} is not a test build (its output ends with the run time); pass claude-hud-c-test from the build directory`);
     process.exit(4);
   }
 }
@@ -31,7 +31,7 @@ export function checkTestBuild(exe, ref, c, n) {
 // Nothing is looked up or downloaded: comparing against a source the caller did not choose
 // proves nothing about the one they meant.
 export function reference(arg) {
-  if (!arg) throw new Error('no reference given: pass an upstream claude-hud source directory or an earlier claude-hud-c-test.exe');
+  if (!arg) throw new Error('no reference given: pass an upstream claude-hud source directory or an earlier claude-hud-c-test');
   const p = path.resolve(arg);
   if (fs.statSync(p, { throwIfNoEntry: false })?.isFile()) {
     if (process.platform === 'win32' && !p.toLowerCase().endsWith('.exe')) throw new Error(`reference ${p} is a file but not an .exe`);

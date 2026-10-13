@@ -1,4 +1,4 @@
-// Compares uniprobe.exe (utf8proc) with this node's regex properties and Intl.Segmenter.
+// Compares uniprobe (utf8proc) with this node's regex properties and Intl.Segmenter.
 import { execFileSync } from 'node:child_process';
 
 const exe = process.argv[2];

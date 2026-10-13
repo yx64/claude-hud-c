@@ -626,8 +626,8 @@ int os_run(us exe, const char *const *args, us cwd, const char *const *env, uint
     return result;
 }
 
-// resolveWindowsGitExecutable: git.exe from absolute PATH entries only, so a git.exe planted in
-// the repository is never picked up.
+// resolveWindowsGitExecutable: git from absolute PATH entries only, so a git planted in the
+// repository is never picked up.
 bool os_find_git(us *out) {
     us path = env_get("PATH");
     for (int32_t i = 0; i <= path.n && path.n;) {
