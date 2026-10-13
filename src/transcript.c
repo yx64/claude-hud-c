@@ -361,10 +361,7 @@ static void tool_use(Parser *s, jv block, double at) {
             us tid = sb_done(&b);
             if (!tid.n) return;
             str_key(tid, &tk, &tkn);
-        } else {
-            if (!jtruthy(id)) return;
-            tk = k, tkn = kn;
-        }
+        } else tk = k, tkn = kn;
         om_put(&s->task_idx, tk, tkn, nullptr)->i = s->todos.n - 1;
     } else if (jstr_eq(name, "TaskUpdate")) {
         int32_t i = find_task(s, jget(input, "taskId"));
@@ -579,12 +576,6 @@ void parse_transcript(us path, Transcript *r) {
     StateSlot slot = {0};
     uint64_t start = 0;
     bool resumed = state_load(&tf, &slot, &s, &start);
-    if (!resumed) {
-        s = (Parser){.r = r};
-        *r = (Transcript){.session_start = NAN, .last_assistant_at = NAN, .ultracode = -1};
-        g_unsupported = nullptr;
-        start = 0;
-    }
     size_t n;
     char *buf = read_rest(h, start, &n);
     if (!buf) {
@@ -618,8 +609,6 @@ void parse_transcript(us path, Transcript *r) {
         if (i == n) break;
         size_t len = j - i;
         if (j == n) len -= held_tail(buf + i, len);
-        char saved_ch = buf[j];
-        buf[j] = 0;
         size_t need = yyjson_read_max_memory_usage(len, flg);
         if (need > poolcap) {
             free(pool);
@@ -642,7 +631,6 @@ void parse_transcript(us path, Transcript *r) {
         // Everything kept from a line is copied out of the pool, so the next line may reuse it.
         on_line(&s, doc ? yyjson_doc_get_root(doc) : nullptr, now);
         free(fixed);
-        buf[j] = saved_ch;
         if (j < n && buf[j] == '\r' && j + 1 < n && buf[j + 1] == '\n') j++;
         i = j < n ? j + term : n;
     }

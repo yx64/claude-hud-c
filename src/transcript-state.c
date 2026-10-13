@@ -143,13 +143,14 @@ static void put_vec(Blob *b, size_t at, size_t elem, const size_t *strs, size_t 
 }
 
 bool state_save(const TranscriptFile *f, const StateSlot *slot, uint64_t off, const char *buf, uint64_t from, size_t n, Parser *s) {
-    us path = slot->path.n ? slot->path : state_path(f->path);
+    us path = slot->path;  // state_load, which always runs first, worked it out
     if (!path.n) return false;
     Header hd = {.magic = STATE_MAGIC, .volume = f->volume, .file = f->file, .off = off};
     memcpy(hd.build, BUILD, sizeof BUILD);
     uint64_t w = off < WINDOW ? off : WINDOW;
-    // A loaded state already hashed the first window, which an append leaves alone.
-    if (slot->head_known && w == WINDOW) hd.head = slot->head;
+    // A loaded state already hashed the first window, which an append leaves alone. It is known
+    // only from a state at WINDOW or later, and a state is saved only at or past the one loaded.
+    if (slot->head_known) hd.head = slot->head;
     else if (!range_hash(f, buf, from, n, 0, w, &hd.head)) return false;
     if (!range_hash(f, buf, from, n, off - w, off, &hd.tail)) return false;
 

@@ -25,7 +25,7 @@ static inline bool state_save(const TranscriptFile *f, const StateSlot *slot, ui
                               Parser *s) { return false; }
 #else
 // The state saved for f, into s and s->r, and the offset parsing resumes at. False when there is
-// none that may be used; s is then to be discarded.
+// none that may be used, with s, s->r, *off and the unsupported case left as they were.
 bool state_load(const TranscriptFile *f, StateSlot *slot, Parser *s, uint64_t *off);
 // Saves s as the state at off. buf holds n bytes of the transcript, from offset `from` on.
 bool state_save(const TranscriptFile *f, const StateSlot *slot, uint64_t off, const char *buf, uint64_t from, size_t n, Parser *s);
