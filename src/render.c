@@ -1822,23 +1822,23 @@ void render(Ctx *ctx, sb *out) {
     C = ctx, CF = ctx->cfg;
     us lines[128];
     int n = CF->compact ? compact_lines(lines) : expanded_lines(lines);
-    us *phys = arena_alloc(sizeof(us) * 1024);
-    int np = 0;
+    int width = ctx->width >= 0 ? ctx->width : 0;
     for (int i = 0; i < n; i++) {
         us l = lines[i];
         for (int32_t a = 0;;) {
             int32_t nl = us_find_ch(l, '\n', a);
-            phys[np++] = us_slice(l, a, nl < 0 ? l.n : nl);
+            us phys = us_slice(l, a, nl < 0 ? l.n : nl);
+            // wrap_to_width gives at most one row per part, and a line has at most its length + 2.
+            us *vis = arena_alloc(sizeof(us) * (size_t)(phys.n + 2));
+            int nv = 0;
+            wrap_to_width(phys, width, vis, &nv);
+            for (int k = 0; k < nv; k++) {
+                sb_us(out, RESET);
+                sb_us(out, vis[k]);
+                sb_ch(out, '\n');
+            }
             if (nl < 0) break;
             a = nl + 1;
         }
-    }
-    us *vis = arena_alloc(sizeof(us) * 4096);
-    int nv = 0;
-    for (int i = 0; i < np; i++) wrap_to_width(phys[i], ctx->width >= 0 ? ctx->width : 0, vis, &nv);
-    for (int i = 0; i < nv; i++) {
-        sb_us(out, RESET);
-        sb_us(out, vis[i]);
-        sb_ch(out, '\n');
     }
 }
