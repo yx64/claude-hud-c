@@ -68,7 +68,10 @@ Known gaps, where claude-hud-c renders English or an approximation instead:
   translation;
 - `--extra-cmd` (Claude Code's `statusLine` cannot pass arguments anyway);
 - a few inputs where claude-hud depends on node's locale data or throws, such as a system locale other than en-US or
-  zh-CN, or a Windows path that is not drive-absolute. The source marks each one `UNSUPPORTED("<Reason>")`.
+  zh-CN, or a Windows path that is not drive-absolute. The source marks each one `UNSUPPORTED("<Reason>")`;
+- inputs that only crafted data or rare setups produce, such as times before 1970, more than 256 skills, or JSON
+  keys repeated within an object, where matching upstream would take more code than the case is worth. The order of
+  git's changed files may also differ when some of them no longer exist; their content does not.
 
 Two additions: the run time of each refresh at the end of the last line, and a parse-state file per transcript (next
 section).
