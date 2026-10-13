@@ -56,24 +56,6 @@ jobs:
           & $clang --version
           Add-Content -LiteralPath $env:GITHUB_ENV -Value "HUD_CC=$($clang.Replace('\', '/'))"
 
-      # The images register a just-in-time debugger, which turns a crash into a process that waits for
-      # someone to answer a dialog. Without it, and without Windows Error Reporting's UI, a crashing test
-      # build exits with its exception code, and the test reports it.
-      - name: Crashes exit (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          Set-StrictMode -Version Latest
-          foreach ($key in 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AeDebug',
-                           'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows NT\CurrentVersion\AeDebug') {
-            if ((Test-Path -LiteralPath $key) -and (Get-ItemProperty -LiteralPath $key).PSObject.Properties['Debugger']) {
-              Remove-ItemProperty -LiteralPath $key -Name Debugger
-              Write-Output "removed the debugger registered under $key"
-            }
-          }
-          $wer = 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting'
-          New-ItemProperty -LiteralPath $wer -Name DontShowUI -Value 1 -PropertyType DWord -Force | Out-Null
-
       # The newest clang in the image's own packages; lld is a separate package.
       - name: Toolchain (Linux)
         if: runner.os == 'Linux'
