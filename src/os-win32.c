@@ -473,7 +473,6 @@ typedef struct {
     HANDLE pipe, overflow;
     char *buf;
     size_t n, max;
-    bool over;
 } Reader;
 
 static DWORD WINAPI read_all(void *arg) {
@@ -483,7 +482,6 @@ static DWORD WINAPI read_all(void *arg) {
         DWORD got;
         if (!ReadFile(r->pipe, chunk, sizeof chunk, &got, nullptr) || !got) break;
         if (r->n + got > r->max) {
-            r->over = true;
             SetEvent(r->overflow);
             break;
         }
@@ -601,11 +599,13 @@ int os_run(us exe, const char *const *args, us cwd, const char *const *env, uint
     if (w == WAIT_OBJECT_0) {
         // The output may still be draining; what is left of the time bounds that too.
         ULONGLONG spent = GetTickCount64() - t0;
-        HANDLE w2[2] = {th, r.overflow};
+        // The overflow first: the reader sets it and then ends, and of two signalled handles the
+        // wait reports the first.
+        HANDLE w2[2] = {r.overflow, th};
         DWORD left = spent >= timeout ? 0 : (DWORD)(timeout - spent);
         DWORD d = WaitForMultipleObjects(2, w2, FALSE, left);
         if (d == WAIT_TIMEOUT) result = RUN_TIMEOUT;
-        else if (d == WAIT_OBJECT_0 + 1) result = RUN_FAILED;
+        else if (d == WAIT_OBJECT_0) result = RUN_FAILED;
         DWORD code = 1;
         GetExitCodeProcess(pi.hProcess, &code);
         if (result == RUN_OK && code != 0) result = RUN_FAILED;
