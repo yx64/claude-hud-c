@@ -4,6 +4,8 @@
 #include <string.h>
 #if defined(__SSE2__)
 #include <emmintrin.h>
+#elif defined(__ARM_NEON) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+#include <arm_neon.h>
 #endif
 
 #include "transcript-state.h"
@@ -531,6 +533,16 @@ static size_t line_stop(const char *s, size_t i, size_t n) {
         __m128i v = _mm_loadu_si128((const __m128i *)(s + i));
         unsigned m = (unsigned)_mm_movemask_epi8(_mm_or_si128(_mm_or_si128(_mm_cmpeq_epi8(v, nl), _mm_cmpeq_epi8(v, cr)), _mm_cmpeq_epi8(v, e2)));
         if (m) return i + (size_t)__builtin_ctz(m);
+    }
+#elif defined(__ARM_NEON) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+    // NEON has no movemask: narrowing each 16-bit lane by a 4-bit shift leaves four mask bits per
+    // byte, in byte order, in one 64-bit lane.
+    const uint8x16_t nl = vdupq_n_u8('\n'), cr = vdupq_n_u8('\r'), e2 = vdupq_n_u8(0xE2);
+    for (; i + 16 <= n; i += 16) {
+        uint8x16_t v = vld1q_u8((const uint8_t *)(s + i));
+        uint8x16_t eq = vorrq_u8(vorrq_u8(vceqq_u8(v, nl), vceqq_u8(v, cr)), vceqq_u8(v, e2));
+        uint64_t m = vget_lane_u64(vreinterpret_u64_u8(vshrn_n_u16(vreinterpretq_u16_u8(eq), 4)), 0);
+        if (m) return i + (size_t)(__builtin_ctzll(m) >> 2);
     }
 #endif
     while (i < n && s[i] != '\n' && s[i] != '\r' && (uint8_t)s[i] != 0xE2) i++;
