@@ -163,11 +163,11 @@ set_target_properties(hud-bytes PROPERTIES OUTPUT_NAME bytes RUNTIME_OUTPUT_DIRE
 # build anywhere and CI run the same ones:
 #   <Group>  each directory under test/cases: the test build against upstream's recorded output (test/run.cmake)
 #   cache    resuming from the saved parse state against a full parse (test/cache.cmake)
-#   smoke    one refresh with a fixed config: the release build, the test build and the test build without parse
-#            state must agree. cmake/Smoke.cmake also takes CONFIG_DIR, to run the same against another config
-#            directory
-# They print nothing but failures, warnings and a summary; HUD_TEST_VERBOSE=1 and HUD_TEST_ONLY=<Group>[/<Case>]
-# in the environment change that, see test/common.cmake.
+#   smoke    one refresh with a fixed config at the real clock: the release build must agree with the test build.
+#            cmake/Smoke.cmake also takes CONFIG_DIR, to run the same against another config directory
+# The groups split by domain, never by count: a FAIL line names <Group>/<Case>, so a large group costs no time
+# finding the failing case. They print nothing but failures, warnings and a summary; HUD_TEST_VERBOSE=1 and
+# HUD_TEST_ONLY=<Group>[/<Case>] in the environment change that, see test/common.cmake.
 enable_testing()
 file(GLOB HUD_TEST_GROUPS LIST_DIRECTORIES true RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/test/cases CONFIGURE_DEPENDS
      ${CMAKE_CURRENT_SOURCE_DIR}/test/cases/*)
@@ -188,7 +188,7 @@ list(APPEND HUD_TEST_RUNS cache smoke)
 set(HUD_TEST_SCRIPT_cache test/cache.cmake)
 set(HUD_TEST_DEPS_cache claude-hud-c-test claude-hud-c-test-nostate hud-bytes test/cache/lines.jsonl test/cache/config.json)
 set(HUD_TEST_SCRIPT_smoke cmake/Smoke.cmake)
-set(HUD_TEST_DEPS_smoke claude-hud-c claude-hud-c-test claude-hud-c-test-nostate)
+set(HUD_TEST_DEPS_smoke claude-hud-c claude-hud-c-test hud-bytes)
 
 # HUD_TEST_AFTER_BUILD: every build also runs the tests whose inputs changed, and fails when one fails. Each
 # group leaves a stamp once all its checks passed; a group that failed, or ran filtered by HUD_TEST_ONLY,
@@ -199,9 +199,6 @@ set(HUD_TEST_NAMES "")
 foreach(name IN LISTS HUD_TEST_RUNS)
   set(script ${HUD_TEST_SCRIPT_${name}})
   set(command ${CMAKE_COMMAND} -DGROUP=${name} -DBIN=${CMAKE_CURRENT_BINARY_DIR} -DRESULT=${HUD_TEST_OUT}/${name}.result)
-  if(name STREQUAL "smoke")
-    list(APPEND command -DWORK=${CMAKE_CURRENT_BINARY_DIR}/smoke)
-  endif()
   add_test(NAME ${name} COMMAND ${command} -P ${CMAKE_CURRENT_SOURCE_DIR}/${script})
   if(HUD_TEST_AFTER_BUILD)
     set(stamp ${HUD_TEST_OUT}/${name}.stamp)

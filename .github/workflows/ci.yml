@@ -100,7 +100,7 @@ jobs:
       # Quiet unless something fails; then the FAIL lines name the group, the case and where the output differs.
       # The slowest group takes seconds; the timeout turns a hang into a failure that names the group.
       - name: Test
-        run: ctest --test-dir build --output-on-failure --timeout 300
+        run: ctest --test-dir build --progress --output-on-failure --no-tests=error --timeout 300
 
       # What a downloaded executable asks of the machine it runs on: the newest glibc symbol version on Linux,
       # the minimum macOS version on macOS.

@@ -50,20 +50,82 @@ set_property(GLOBAL PROPERTY hud_failed 0)
 set_property(GLOBAL PROPERTY hud_skipped 0)
 set_property(GLOBAL PROPERTY hud_warned 0)
 
-# Whether <Case> of this group is to run under HUD_TEST_ONLY.
+set(HUD_ONLY "")
+if(HUD_FILTERED)
+  string(REPLACE "," ";" _only "$ENV{HUD_TEST_ONLY}")
+  foreach(_o IN LISTS _only)
+    string(STRIP "${_o}" _o)
+    if(NOT _o STREQUAL "")
+      list(APPEND HUD_ONLY "${_o}")
+    endif()
+  endforeach()
+endif()
+
+# Whether <Case> of this group is to run under HUD_TEST_ONLY. The entries that matched are kept, so
+# that hud_finish can report one that matched nothing.
 function(hud_selected case out)
   set(sel TRUE)
   if(HUD_FILTERED)
     set(sel FALSE)
-    string(REPLACE "," ";" only "$ENV{HUD_TEST_ONLY}")
-    foreach(o IN LISTS only)
-      string(STRIP "${o}" o)
+    foreach(o IN LISTS HUD_ONLY)
       if(o STREQUAL GROUP OR o STREQUAL "${GROUP}/${case}")
         set(sel TRUE)
+        set_property(GLOBAL APPEND PROPERTY hud_only_hit "${o}")
       endif()
     endforeach()
   endif()
   set(${out} ${sel} PARENT_SCOPE)
+endfunction()
+
+# A failure of the run as a whole rather than of one case.
+function(hud_fail_group what)
+  hud_count(failed)
+  message("FAIL ${GROUP}: ${what}")
+endfunction()
+
+# Every group a HUD_TEST_ONLY entry may name: the directories under test/cases, and the two groups
+# with drivers of their own (CMakeLists.txt).
+function(hud_known_groups out)
+  file(GLOB dirs LIST_DIRECTORIES true RELATIVE ${HUD_TEST_DIR}/cases ${HUD_TEST_DIR}/cases/*)
+  set(groups cache smoke)
+  foreach(d IN LISTS dirs)
+    if(IS_DIRECTORY ${HUD_TEST_DIR}/cases/${d})
+      list(APPEND groups ${d})
+    endif()
+  endforeach()
+  set(${out} "${groups}" PARENT_SCOPE)
+endfunction()
+
+# A run in which nothing ran is not a pass: an empty group, a group whose every case was skipped,
+# and a HUD_TEST_ONLY entry that selects nothing would otherwise all pass in silence. Each group
+# checks the entries that name it; an entry naming no group at all fails in every group, since
+# which groups run (ctest -R, a build) is not known here.
+function(hud_check_ran)
+  get_property(passed GLOBAL PROPERTY hud_passed)
+  get_property(failed GLOBAL PROPERTY hud_failed)
+  get_property(skipped GLOBAL PROPERTY hud_skipped)
+  math(EXPR total "${passed} + ${failed}")
+  if(HUD_FILTERED)
+    get_property(hit GLOBAL PROPERTY hud_only_hit)
+    hud_known_groups(known)
+    foreach(o IN LISTS HUD_ONLY)
+      string(REGEX REPLACE "/.*" "" g "${o}")
+      if(NOT g IN_LIST known)
+        hud_fail_group("HUD_TEST_ONLY entry ${o} names no group (groups: ${known})")
+      elseif(g STREQUAL GROUP AND NOT o IN_LIST hit)
+        hud_fail_group("HUD_TEST_ONLY entry ${o} matches no case")
+      endif()
+    endforeach()
+    if(total EQUAL 0 AND skipped GREATER 0)
+      hud_fail_group("every selected case was skipped; nothing was checked")
+    endif()
+  elseif(total EQUAL 0)
+    if(skipped GREATER 0)
+      hud_fail_group("every case was skipped; nothing was checked")
+    else()
+      hud_fail_group("no case ran")
+    endif()
+  endif()
 endfunction()
 
 function(hud_count what)
@@ -110,8 +172,10 @@ function(hud_skip case why)
 endfunction()
 
 # Ends the group: the summary when it is of interest, the counts for the build's summary, the stamp
-# when the whole group passed, and a failing exit code when anything failed.
+# when the whole group passed, and a failing exit code when anything failed. A filtered run that ran
+# anything here prints its line too: no build summary follows it, as it leaves no stamp.
 function(hud_finish)
+  hud_check_ran()
   foreach(k passed failed skipped warned)
     get_property(${k} GLOBAL PROPERTY hud_${k})
   endforeach()
@@ -130,7 +194,8 @@ function(hud_finish)
     endif()
     message(FATAL_ERROR "${line}")
   endif()
-  if(warned OR HUD_VERBOSE)
+  math(EXPR ran "${total} + ${skipped}")
+  if(warned OR HUD_VERBOSE OR (HUD_FILTERED AND ran GREATER 0))
     message("${line}")
   endif()
   if(DEFINED STAMP AND NOT HUD_FILTERED)

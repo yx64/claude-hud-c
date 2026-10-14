@@ -50,8 +50,8 @@ With git status display on, each refresh also waits for one git process, on both
 
 Byte-identical output is the rule every change is held to, not an aim. It is checked at two levels:
 
-- **Every build** runs the tests under `test/cases`, grouped by area (UTF-8, malformed and large JSON, layout, display
-  items, written files, git and jj), comparing claude-hud-c's status line and the files it writes, byte for byte, with
+- **Every build** runs the tests under `test/cases`, grouped by area (UTF-8, the config files, the fields read from
+  stdin and the transcript, input limits, malformed input, layout, display items, written files, git and jj), comparing claude-hud-c's status line and the files it writes, byte for byte, with
   what claude-hud printed and wrote for the same input at a frozen clock. claude-hud's output is recorded in the cases,
   so the tests need only CMake. Another group grows transcripts step by step and holds the incremental parsing to a full
   parse. `ctest` runs the same tests.
@@ -127,9 +127,10 @@ cmake -S claude-hud-c -B <BuildDir> -G Ninja -DCMAKE_C_COMPILER=<Clang>
 cmake --build <BuildDir>
 ```
 
-The build runs the tests as well and fails when one fails. It prints one summary line, such as
-`tests: 424/424 passed`, or a `FAIL` line per failed check with where the output differs. To build without
-them, configure with `-DHUD_TEST_AFTER_BUILD=OFF`; `ctest --test-dir <BuildDir>` runs them at any time.
+The build runs the tests as well and fails when one fails. Besides Ninja's progress line for each test group,
+it prints one summary line, such as `tests: 427/427 passed`, or a `FAIL` line per failed check with where the
+output differs. To build without them, configure with `-DHUD_TEST_AFTER_BUILD=OFF`;
+`ctest --test-dir <BuildDir> --progress --output-on-failure --no-tests=error` runs them at any time.
 
 Copy the executable, unpacked or built (`<BuildDir>/release/claude-hud-c.exe`, `claude-hud-c` off Windows), to a
 directory that is not on `PATH`, such as `~/.local/tools/`, and point `statusLine` in the user-level
