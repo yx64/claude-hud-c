@@ -31,8 +31,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: windows-x64, runner: windows-2025, exe: .exe }
-          - { name: windows-arm64, runner: windows-11-arm, exe: .exe }
+          - { name: windows-x64, runner: windows-2025 }
+          - { name: windows-arm64, runner: windows-11-arm }
           - { name: linux-x64, runner: ubuntu-26.04 }
           - { name: linux-arm64, runner: ubuntu-26.04-arm }
           # The oldest macOS the executable accepts; without it, it would require the runner's own version.
@@ -119,12 +119,24 @@ jobs:
           file build/release/claude-hud-c
           vtool -show-build build/release/claude-hud-c
 
-      - name: Package
+      # The executable alone, at the root of the archive. tar keeps the linker's executable bit; 7z is in both
+      # Windows images.
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
         run: |
-          cmake -E make_directory dist
-          cmake -E copy build/release/claude-hud-c${{ matrix.exe }} dist/claude-hud-c-${{ matrix.name }}${{ matrix.exe }}
+          set -euo pipefail
+          mkdir dist
+          7z a dist/claude-hud-c-${{ matrix.name }}.zip ./build/release/claude-hud-c.exe
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir dist
+          tar czf dist/claude-hud-c-${{ matrix.name }}.tar.gz -C build/release claude-hud-c
 
-      # Handed to the release job; kept briefly, the release is where executables stay.
+      # Handed to the release job; kept briefly, the release is where archives stay.
       - uses: actions/upload-artifact@v7
         with:
           name: claude-hud-c-${{ matrix.name }}
@@ -152,7 +164,7 @@ jobs:
           set -euo pipefail
           sha256sum claude-hud-c-* > SHA256SUMS
           cat SHA256SUMS
-          [[ $(wc -l < SHA256SUMS) -eq 6 ]] || { echo "expected 6 executables" >&2; exit 1; }
+          [[ $(wc -l < SHA256SUMS) -eq 6 ]] || { echo "expected 6 archives" >&2; exit 1; }
 
       # gh is preinstalled on the runner; the job's own token is allowed to create releases (contents: write).
       - name: Release
@@ -163,4 +175,4 @@ jobs:
         run: |
           set -euo pipefail
           gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --generate-notes \
-            --notes "Single executables, not archived. On Linux and macOS, make the downloaded file executable with chmod +x. SHA256SUMS lists their SHA-256 checksums."
+            --notes "Each archive holds the executable alone: claude-hud-c.exe on Windows, claude-hud-c elsewhere, already executable. SHA256SUMS lists the archives' SHA-256 checksums."
