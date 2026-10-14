@@ -110,10 +110,13 @@ architecture.
 
 ## Install
 
-Prebuilt executables are on the [Releases](https://github.com/yx64/claude-hud-c/releases) page, one file per
-platform, not archived: `claude-hud-c-<Os>-<Arch>`, with `.exe` on Windows. `SHA256SUMS` beside them lists their
-checksums. On Linux and macOS, make the downloaded file executable with `chmod +x`; on macOS a file downloaded through
-a browser is also quarantined, which `xattr -d com.apple.quarantine <File>` lifts.
+Prebuilt executables are on the [Releases](https://github.com/yx64/claude-hud-c/releases) page, one archive per
+platform: `claude-hud-c-<Os>-<Arch>.zip` on Windows, `.tar.gz` on Linux and macOS. Each holds the executable alone,
+`claude-hud-c.exe` on Windows and `claude-hud-c` elsewhere, already executable. `SHA256SUMS` beside them lists the
+archives' checksums. The latest release is always at
+`https://github.com/yx64/claude-hud-c/releases/latest/download/<Archive>`. On macOS an archive downloaded through a
+browser is quarantined, and so is the executable Finder unpacks from it; `xattr -d com.apple.quarantine <Executable>`
+lifts that.
 
 To build from source you need CMake 3.28 or later, Ninja, and clang with C23 support and lld (clang 18 is too old).
 Neither node nor claude-hud is needed to build, test or run it.
@@ -128,7 +131,7 @@ The build runs the tests as well and fails when one fails. It prints one summary
 `tests: 424/424 passed`, or a `FAIL` line per failed check with where the output differs. To build without
 them, configure with `-DHUD_TEST_AFTER_BUILD=OFF`; `ctest --test-dir <BuildDir>` runs them at any time.
 
-Copy the executable, downloaded or built (`<BuildDir>/release/claude-hud-c.exe`, `claude-hud-c` off Windows), to a
+Copy the executable, unpacked or built (`<BuildDir>/release/claude-hud-c.exe`, `claude-hud-c` off Windows), to a
 directory that is not on `PATH`, such as `~/.local/tools/`, and point `statusLine` in the user-level
 `~/.claude/settings.json` at it:
 
@@ -137,8 +140,8 @@ directory that is not on `PATH`, such as `~/.local/tools/`, and point `statusLin
 ```
 
 Use forward slashes: Claude Code runs the command through a shell, and Git Bash drops unquoted backslashes. That shell
-also expands the `~`. To update, rename the old executable aside before copying the new one in, since a refresh may be
-running it.
+also expands the `~`. To update, rename the old executable aside before copying or unpacking the new one into its place,
+since a refresh may be running it; on Windows, writing over it then fails.
 
 The config is claude-hud's, read from the same place, `~/.claude/plugins/claude-hud/config.json` (under
 `CLAUDE_CONFIG_DIR` when that is set). An existing claude-hud config works as it is. To go back to claude-hud,
