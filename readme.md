@@ -129,7 +129,8 @@ cmake --build <BuildDir>
 
 The build runs the tests as well and fails when one fails. Besides Ninja's progress line for each test group,
 it prints one summary line, such as `tests: 427/427 passed`, or a `FAIL` line per failed check with where the
-output differs. To build without them, configure with `-DHUD_TEST_AFTER_BUILD=OFF`;
+output differs. `cmake --build <BuildDir> -- --quiet` drops Ninja's progress lines (Ninja 1.11 or later), so a
+passing build prints that summary line alone. To build without the tests, configure with `-DHUD_TEST_AFTER_BUILD=OFF`;
 `ctest --test-dir <BuildDir> --progress --output-on-failure --no-tests=error` runs them at any time.
 
 Copy the executable, unpacked or built (`<BuildDir>/release/claude-hud-c.exe`, `claude-hud-c` off Windows), to a
