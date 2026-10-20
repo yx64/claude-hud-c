@@ -1,7 +1,17 @@
 #pragma once
+#include <math.h>
 #include <stddef.h>
 #include <stdint.h>
 #include "yyjson.h"
+
+// The compiler's own classification, whatever math.h says: older Windows SDKs expand these to
+// calls into the C runtime (_dclass and its kin), which a build that links no C runtime cannot resolve.
+#undef isnan
+#undef isinf
+#undef isfinite
+#define isnan(x) __builtin_isnan(x)
+#define isinf(x) __builtin_isinf(x)
+#define isfinite(x) __builtin_isfinite(x)
 
 // Anything this port does not reproduce exactly sets this. The release build renders on
 // regardless; the test build reports it instead of output, the trace build logs it.
