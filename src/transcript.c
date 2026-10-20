@@ -457,13 +457,17 @@ static void assistant(Parser *s, jv e, double at) {
     s->has_idless = true;
 }
 
-static double line_time(Parser *s, double at, double now) {
-    if (!isnan(at)) return at;
-    s->used_now = true;
-    return now;
-}
+// A tool line without a time takes the clock of the refresh parsing it, the same for every such line
+// (upstream takes it per line, apart by microseconds). The time is kept as NOW and made the clock once
+// the parse is done, so a state saved past such a line holds no clock: resuming from it gives what a full
+// parse at the clock of the refresh resuming gives. Only an agent keeps the time (tool_use, tool_result),
+// and only !isnan looks at it before then, for which NOW is a time like any other. No timestamp parses
+// to an infinity.
+static constexpr double NOW = -__builtin_inf();
 
-static void on_line(Parser *s, jv e, double now) {
+static double line_time(double at) { return isnan(at) ? NOW : at; }
+
+static void on_line(Parser *s, jv e) {
     Transcript *r = s->r;
     if (!e || !(yyjson_is_obj(e) || yyjson_is_arr(e))) {
         s->has_idless = false;
@@ -518,8 +522,8 @@ static void on_line(Parser *s, jv e, double now) {
         jv block;
         yyjson_arr_foreach(content, idx, max, block) {
             jv bt = jget(block, "type");
-            if (jstr_eq(bt, "tool_use") && jtruthy(jget(block, "id")) && jtruthy(jget(block, "name"))) tool_use(s, block, line_time(s, at, now));
-            if (jstr_eq(bt, "tool_result") && jtruthy(jget(block, "tool_use_id"))) tool_result(s, block, e, line_time(s, at, now));
+            if (jstr_eq(bt, "tool_use") && jtruthy(jget(block, "id")) && jtruthy(jget(block, "name"))) tool_use(s, block, line_time(at));
+            if (jstr_eq(bt, "tool_result") && jtruthy(jget(block, "tool_use_id"))) tool_result(s, block, e, line_time(at));
         }
     }
 }
@@ -615,7 +619,7 @@ void parse_transcript(us path, Transcript *r) {
         if (!kept && (i == n || j == n || (buf[j] == '\r' && j + 1 == n))) {
             uint64_t off = start + i;
             kept = true;
-            if (off && !s.used_now && !(resumed && off == start)) saved = state_save(&tf, &slot, off, buf, start, n, &s);
+            if (off && !(resumed && off == start)) saved = state_save(&tf, &slot, off, buf, start, n, &s);
         }
         if (i == n) break;
         size_t len = j - i;
@@ -640,7 +644,7 @@ void parse_transcript(us path, Transcript *r) {
             }
         }
         // Everything kept from a line is copied out of the pool, so the next line may reuse it.
-        on_line(&s, doc ? yyjson_doc_get_root(doc) : nullptr, now);
+        on_line(&s, doc ? yyjson_doc_get_root(doc) : nullptr);
         free(fixed);
         if (j < n && buf[j] == '\r' && j + 1 < n && buf[j + 1] == '\n') j++;
         i = j < n ? j + term : n;
@@ -664,7 +668,12 @@ void parse_transcript(us path, Transcript *r) {
     r->tools = arena_alloc(sizeof(Tool) * 20);
     for (int32_t i = s.toolv.n > 20 ? s.toolv.n - 20 : 0; i < s.toolv.n; i++) r->tools[r->ntools++] = s.toolv.p[i];
     r->agents = arena_alloc(sizeof(Agent) * 10);
-    for (int32_t i = s.agentv.n > 10 ? s.agentv.n - 10 : 0; i < s.agentv.n; i++) r->agents[r->nagents++] = s.agentv.p[i];
+    for (int32_t i = s.agentv.n > 10 ? s.agentv.n - 10 : 0; i < s.agentv.n; i++) {
+        Agent a = s.agentv.p[i];
+        if (a.start == NOW) a.start = now;
+        if (a.end == NOW) a.end = now;
+        r->agents[r->nagents++] = a;
+    }
     r->skills = s.skillv.p, r->nskills = s.skillv.n;
     r->mcp_servers = s.mcpv.p, r->nmcp = s.mcpv.n;
     r->mcp_errors = arena_alloc(sizeof(us) * (size_t)(s.mcp_err.alive + 1));

@@ -17,7 +17,9 @@
 #                     file identity tells
 #   same-name         two transcripts with one file name, whose states share a name
 #   unsupported       an unsupported case in the saved part is still reported when resuming
-#   timeless          a tool line without a time takes the clock, so no state is saved past it
+#   timeless          an agent's tool line without a time takes the clock of the refresh parsing it. A state
+#                     is saved past it all the same, and the clock moves on a minute every step: resuming
+#                     must give the agent the clock of the refresh resuming, as a full parse does
 cmake_minimum_required(VERSION 3.28)
 include(${CMAKE_CURRENT_LIST_DIR}/common.cmake)
 
@@ -163,35 +165,37 @@ endfunction()
 
 # Grows t/<Name>.jsonl in place from nothing to the bytes of <Full> through <Cuts>, the last one twice,
 # checking at each step. The saved state must sit right after the last complete line of what has been
-# written so far, or, given a limit as a further argument, never past it.
+# written so far. Given a number of milliseconds as a further argument, the frozen clock moves on by that
+# much every step.
 function(grow name full ends cuts)
-  set(limit "")
+  set(tick 0)
   if(ARGC GREATER 4)
-    set(limit ${ARGV4})
+    set(tick ${ARGV4})
   endif()
   set(tp ${dir}/t/${name}.jsonl)
   file(WRITE ${tp} "")
   set(at 0)
+  set(step 0)
   list(GET cuts -1 final)
   foreach(c IN LISTS cuts ITEMS ${final})
     if(c GREATER at)
       execute_process(COMMAND ${HUD_BYTES} append ${full} ${tp} ${at} ${c} COMMAND_ERROR_IS_FATAL ANY)
     endif()
     set(at ${c})
+    math(EXPR now "${HUD_NOW_MS} + ${step} * ${tick}")
+    set(ENV{HUD_FAKE_NOW_MS} ${now})
+    math(EXPR step "${step} + 1")
     check("${name}@${c}" ${tp})
     saved_offset(${dir}/state ${tp} got)
-    if(limit STREQUAL "")
-      want_offset("${ends}" ${c} want)
-      if(want EQUAL 0)
-        set(want "")
-      endif()
-      if(NOT "${got}" STREQUAL "${want}")
-        hud_fail("${name}@${c}" "saved offset ${got}, expected ${want} (empty: no state saved)")
-      endif()
-    elseif(NOT got STREQUAL "" AND got GREATER limit)
-      hud_fail("${name}@${c}" "saved offset ${got}, past ${limit}")
+    want_offset("${ends}" ${c} want)
+    if(want EQUAL 0)
+      set(want "")
+    endif()
+    if(NOT "${got}" STREQUAL "${want}")
+      hud_fail("${name}@${c}" "saved offset ${got}, expected ${want} (empty: no state saved)")
     endif()
   endforeach()
+  set(ENV{HUD_FAKE_NOW_MS} ${HUD_NOW_MS})
 endfunction()
 
 # Every terminator's surroundings, from just before it to one byte past it, plus the end; every third.
@@ -374,7 +378,7 @@ if(sel)
   string(FIND "${t}" "${timeless_line}" start)
   math(EXPR a "${start} / 2")
   math(EXPR b "${start} + 10")
-  grow(timeless ${full} "${ends}" "${a};${b};${len}" ${start})
+  grow(timeless ${full} "${ends}" "${a};${b};${len}" 60000)
 endif()
 
 hud_finish()

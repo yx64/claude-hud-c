@@ -285,7 +285,7 @@ bool state_load(const TranscriptFile *f, StateSlot *slot, Parser *s, uint64_t *o
     // From here the buffer is the state, and like the arena it lives until the process ends.
     Transcript *r = s->r;
     *s = *hd->parser;
-    s->r = r, s->used_now = false;
+    s->r = r;
     *r = *hd->transcript;
     r->tools = nullptr, r->agents = nullptr, r->todos = nullptr, r->skills = r->mcp_servers = r->mcp_errors = nullptr;
     r->ntools = r->nagents = r->ntodos = r->nskills = r->nmcp = r->nmcp_err = 0;

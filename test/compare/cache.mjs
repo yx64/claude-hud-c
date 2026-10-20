@@ -92,7 +92,7 @@ function savedOffset(cache, tp) {
 
 // Grows tp from nothing through the cut points, comparing at each step. The saved state must sit
 // right after the last complete line, or, given a limit, never past it.
-async function grow(name, bytes, cuts, limit = null) {
+async function grow(name, bytes, cuts) {
   const tp = path.join(workDir, 't', `${name}.jsonl`);
   const cache = path.join(workDir, 'cache', `${name}-${seq++}`);
   fs.mkdirSync(path.dirname(tp), { recursive: true });
@@ -104,9 +104,9 @@ async function grow(name, bytes, cuts, limit = null) {
     compare(`${name} @${cut}`, await refresh(tp, cache));
     const want = resumeOffset(bytes.subarray(0, cut)) || null;
     const got = savedOffset(cache, tp);
-    if (limit === null ? got !== want : got !== null && got > limit) {
+    if (got !== want) {
       stats.offsetWrong++;
-      if (failures.length < 20) failures.push({ label: `${name} @${cut}`, savedOffset: got, expected: limit === null ? want : `<= ${limit}` });
+      if (failures.length < 20) failures.push({ label: `${name} @${cut}`, savedOffset: got, expected: want });
     }
   }
   return { tp, cache };
@@ -273,15 +273,15 @@ function rewriteAt(bytes, needle, at, lo, hi) {
   await grow('unsupported', bytes, [Math.floor(bytes.length / 2), bytes.length]);
 }
 
-// A tool line without a time takes the clock; no state is saved past it, so later refreshes still
-// agree with a full parse at their own clock.
+// An agent's tool line without a time takes the clock of the refresh parsing it; a state is saved past
+// it all the same, and holds no clock, so later refreshes still agree with a full parse at their own clock.
 {
   const lines = syntheticLines(8);
   const timeless = { type: 'assistant', message: { id: 'nt', content: [{ type: 'tool_use', id: 'toolu_nt', name: 'Task', input: { description: 'no time' } }] } };
   lines.splice(6, 0, timeless);
   const bytes = synthetic(lines, () => '\n');
   const lineStart = bytes.indexOf(Buffer.from(JSON.stringify(timeless)));
-  await grow('timeless', bytes, [Math.floor(lineStart / 2), lineStart + 10, bytes.length], lineStart);
+  await grow('timeless', bytes, [Math.floor(lineStart / 2), lineStart + 10, bytes.length]);
 }
 
 const report = path.join(workDir, 'cache-report.json');
