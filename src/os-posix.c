@@ -21,6 +21,7 @@
 #include <time.h>
 #include <unistd.h>
 #if defined(__APPLE__)
+#include <libproc.h>
 #include <mach-o/dyld.h>
 #include <mach/mach.h>
 #include <sys/sysctl.h>
@@ -547,10 +548,27 @@ int os_run(us exe, const char *const *args, us cwd, const char *const *env, uint
     argv[na + 1] = nullptr;
     char **envp = env[0] ? env_block(env) : environ, **cand = candidates(exe);
     const char *dir = u8(cwd);
+#if defined(__APPLE__)
+    // The descriptors open now, listed before fork, since the child may only make async-signal-safe
+    // calls; counting up to the descriptor limit instead could take seconds, as node and Bun raise it
+    // to the hard limit.
+    int listed = proc_pidinfo(getpid(), PROC_PIDLISTFDS, 0, nullptr, 0);
+    struct proc_fdinfo *fds = listed > 0 ? arena_alloc((size_t)listed) : nullptr;
+    int nfds = fds ? proc_pidinfo(getpid(), PROC_PIDLISTFDS, 0, fds, listed) / (int)sizeof *fds : 0;
+#endif
     pid_t pid = fork();
     if (pid == 0) {
         setpgid(0, 0);
         dup2(nul, 0), dup2(pfd[1], 1), dup2(nul, 2);
+        // Nothing past the three: a descriptor this process holds without close-on-exec (one the
+        // program that started it left open) would otherwise reach git, and through a daemon git
+        // leaves running, outlive it.
+#if defined(__APPLE__)
+        for (int i = 0; i < nfds; i++)
+            if (fds[i].proc_fd > 2) close(fds[i].proc_fd);
+#else
+        close_range(3, ~0U, 0);  // Linux 5.9 and later; on an older kernel it fails and they stay open
+#endif
         if (chdir(dir)) _exit(127);
         for (char **c = cand; *c; c++) execve(*c, argv, envp);
         _exit(127);

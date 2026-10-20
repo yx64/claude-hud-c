@@ -535,7 +535,9 @@ static void quote_arg(sb *b, us a) {
 
 // stdin and stderr on NUL. The child and anything it starts run in a job that is ended on
 // timeout, and also when this process dies first (kill on close); that limit is lifted before a
-// normal close so a daemon git leaves behind survives.
+// normal close so a daemon git leaves behind survives. The child inherits the pipe and NUL and no
+// other handle: whatever else is inheritable in this process (the HUD's own stdout) would otherwise
+// reach git, and through a daemon git leaves running, outlive it.
 int os_run(us exe, const char *const *args, us cwd, const char *const *env, uint32_t timeout, size_t max_out, us *out) {
     SECURITY_ATTRIBUTES sa = {sizeof sa, nullptr, TRUE};
     HANDLE rd, wr;
@@ -558,12 +560,20 @@ int os_run(us exe, const char *const *args, us cwd, const char *const *env, uint
     sb_ch(&cmdline, '"'), sb_us(&cmdline, exe), sb_ch(&cmdline, '"');
     for (int i = 0; args[i]; i++) sb_ch(&cmdline, ' '), quote_arg(&cmdline, us_c(args[i]));
     wchar_t *cmd = (wchar_t *)wz(sb_done(&cmdline));  // CreateProcessW may write into it
-    STARTUPINFOW si = {sizeof si};
-    si.dwFlags = STARTF_USESTDHANDLES;
-    si.hStdInput = nul, si.hStdOutput = wr, si.hStdError = nul;
+    STARTUPINFOEXW si = {{sizeof si}};
+    si.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+    si.StartupInfo.hStdInput = nul, si.StartupInfo.hStdOutput = wr, si.StartupInfo.hStdError = nul;
+    HANDLE inherit[2] = {nul, wr};
+    SIZE_T asz = 0;
+    InitializeProcThreadAttributeList(nullptr, 1, 0, &asz);  // only asks for the size
+    si.lpAttributeList = arena_alloc(asz);
+    bool listed = InitializeProcThreadAttributeList(si.lpAttributeList, 1, 0, &asz);
+    bool limited = listed && UpdateProcThreadAttribute(si.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, inherit, sizeof inherit, nullptr, nullptr);
     PROCESS_INFORMATION pi;
-    bool started = CreateProcessW(wz(exe), cmd, nullptr, nullptr, TRUE, CREATE_SUSPENDED | CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT,
-                                  env[0] ? env_block(env) : nullptr, wz(cwd), &si, &pi);
+    bool started = limited && CreateProcessW(wz(exe), cmd, nullptr, nullptr, TRUE,
+                                             CREATE_SUSPENDED | CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT | EXTENDED_STARTUPINFO_PRESENT,
+                                             env[0] ? env_block(env) : nullptr, wz(cwd), &si.StartupInfo, &pi);
+    if (listed) DeleteProcThreadAttributeList(si.lpAttributeList);
     CloseHandle(wr);
     CloseHandle(nul);
     Reader r = {rd, overflow, arena_alloc(max_out + 1), 0, max_out};
