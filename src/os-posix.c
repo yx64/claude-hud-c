@@ -605,10 +605,16 @@ int os_run(us exe, const char *const *args, us cwd, const char *const *env, uint
     close(pfd[0]);
     int status = 0;
     pid_t w = 0;
-    // The output is complete; what is left of the time bounds the exit too.
+    // The output is complete; what is left of the time bounds the exit too. The child is usually exiting by
+    // now, so the pauses between checks start at 20 us and double up to a millisecond: a fixed millisecond
+    // would add most of one to every run.
+    struct timespec nap = {0, 20000};
     while (result == RUN_OK && (w = waitpid(pid, &status, WNOHANG)) == 0) {
         if (left_ms(deadline) <= 0) result = RUN_TIMEOUT;
-        else poll(nullptr, 0, 1);
+        else {
+            nanosleep(&nap, nullptr);
+            nap.tv_nsec = nap.tv_nsec >= 500000 ? 1000000 : nap.tv_nsec * 2;
+        }
     }
     if (result != RUN_OK) {
         kill(-pid, SIGKILL);
