@@ -457,12 +457,14 @@ static void assistant(Parser *s, jv e, double at) {
     s->has_idless = true;
 }
 
-// A tool line without a time takes the clock of the refresh parsing it, the same for every such line
-// (upstream takes it per line, apart by microseconds). The time is kept as NOW and made the clock once
-// the parse is done, so a state saved past such a line holds no clock: resuming from it gives what a full
-// parse at the clock of the refresh resuming gives. Only an agent keeps the time (tool_use, tool_result),
-// and only !isnan looks at it before then, for which NOW is a time like any other. No timestamp parses
-// to an infinity.
+// A tool line without a time takes the clock of the refresh parsing it, the one the rest of the refresh reads
+// too, the same for every such line. Upstream takes the time per line as it parses and renders against a
+// clock read after the parse, so an agent finished on such a line always shows as just finished; one clock
+// shows it the same, and the same as upstream with its clock frozen. The time is kept as NOW and made the
+// clock once the parse is done, so a state saved past such a line holds no clock: resuming from it gives what
+// a full parse at the clock of the refresh resuming gives. Only an agent keeps the time (tool_use,
+// tool_result), and only !isnan looks at it before then, for which NOW is a time like any other. No timestamp
+// parses to an infinity.
 static constexpr double NOW = -__builtin_inf();
 
 static double line_time(double at) { return isnan(at) ? NOW : at; }
@@ -572,7 +574,7 @@ static size_t held_tail(const char *s, size_t n) {
 const char *g_transcript_state = "unread";
 #endif
 
-void parse_transcript(us path, Transcript *r) {
+void parse_transcript(us path, double now, Transcript *r) {
     *r = (Transcript){.session_start = NAN, .last_assistant_at = NAN};
     if (!path.n) return;
     us full = path_resolve(path);
@@ -599,7 +601,6 @@ void parse_transcript(us path, Transcript *r) {
         g_unsupported = outer;
         return;
     }
-    double now = now_ms();
     yyjson_read_flag flg = YYJSON_READ_ALLOW_INVALID_UNICODE;
     size_t poolcap = 0;
     void *pool = nullptr;

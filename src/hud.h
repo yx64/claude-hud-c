@@ -45,7 +45,7 @@ typedef struct {
     double tok_in, tok_out, tok_cc, tok_cr;
 } Transcript;
 
-void parse_transcript(us path, Transcript *t);
+void parse_transcript(us path, double now, Transcript *t);  // now: the refresh's clock, for lines without a time
 #if defined(HUD_C_TRACE)
 extern const char *g_transcript_state;  // how parse_transcript used and kept its saved state, for the trace log
 #endif

@@ -131,7 +131,7 @@ static void run(const char *buf, size_t n, sb *out) {
     Transcript tr = {.session_start = NAN, .last_assistant_at = NAN};
     if (needs_transcript(&cfg, root)) {
         jv tp = jget(root, "transcript_path");
-        if (jis_str(tp)) parse_transcript(jstr(tp), &tr);
+        if (jis_str(tp)) parse_transcript(jstr(tp), ctx.now, &tr);
     }
     ctx.t = &tr;
     ctx.vcs = vcs_status(&cfg, root);
