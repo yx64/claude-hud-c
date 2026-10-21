@@ -166,6 +166,13 @@ jobs:
           cat SHA256SUMS
           [[ $(wc -l < SHA256SUMS) -eq 6 ]] || { echo "expected 6 archives" >&2; exit 1; }
 
+      # The claude-hud release the output is compared with, for the notes.
+      - uses: actions/checkout@v7
+        with:
+          path: src
+          sparse-checkout: test/compare/common.mjs
+          sparse-checkout-cone-mode: false
+
       # gh is preinstalled on the runner; the job's own token is allowed to create releases (contents: write).
       - name: Release
         shell: bash
@@ -174,5 +181,7 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
+          upstream=$(sed -n "s/^export const VERSION = '\([0-9.]*\)';$/\1/p" src/test/compare/common.mjs)
+          [[ -n $upstream ]] || { echo "no VERSION in test/compare/common.mjs" >&2; exit 1; }
           gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --generate-notes \
-            --notes "Each archive holds the executable alone: claude-hud-c.exe on Windows, claude-hud-c elsewhere, already executable. SHA256SUMS lists the archives' SHA-256 checksums."
+            --notes "Output matches claude-hud $upstream. Each archive holds the executable alone: claude-hud-c.exe on Windows, claude-hud-c elsewhere, already executable. SHA256SUMS lists the archives' SHA-256 checksums."
