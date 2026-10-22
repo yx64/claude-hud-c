@@ -148,7 +148,7 @@ if ($UpstreamDir) {
     # What is timed is the build to be installed, which appends its run time to the last line; that is not
     # upstream's output, so it is taken off before comparing with the node side character by character. The two
     # do not run at the same moment, so a clock tick across a displayed unit can make them differ.
-    $same = ($last['sh -> claude-hud-c'] -replace ' \x1b\[32m\d+ms\x1b\[0m\n$', "`n") -ceq $last['sh -> node']
+    $same = ($last['sh -> claude-hud-c'] -replace ' \x1b\[32m\d+(?:ms|\u00b5s)\x1b\[0m\n$', "`n") -ceq $last['sh -> node']
 }
 Write-Host ('transcript {0:N1} MB; CPU load {1}% before, {2}% after; sh outputs identical: {3}' -f
     ((Get-Item -LiteralPath $Transcript).Length / 1MB), $loadBefore, $loadAfter, $same)

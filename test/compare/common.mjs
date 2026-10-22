@@ -15,7 +15,7 @@ const fakeClock = fileURLToPath(new URL('./fakeclock.mjs', import.meta.url));
 
 // A release or observation build appends " <N>ms" to the last line and cannot freeze its clock;
 // comparing one, on either side, reports every case as different.
-const RUN_TIME = / \x1b\[32m\d+ms\x1b\[0m\n$/;
+const RUN_TIME = / \x1b\[32m\d+(?:ms|µs)\x1b\[0m\n$/;
 export function checkTestBuild(exe, ref, c, n) {
   const timed = (r) => r.code === 0 && RUN_TIME.test(r.out.toString());
   const which = timed(c) && !timed(n) ? exe : ref.kind === 'exe' && timed(n) && !timed(c) ? ref.path : null;

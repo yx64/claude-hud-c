@@ -89,13 +89,16 @@ static VcsStatus *vcs_status(Config *c, jv root) {
 }
 
 #if !defined(HUD_C_TEST)
-// " <N>ms" in green on the last line, up to the moment before writing; where it starts is
-// os_run_ms's. Not upstream output, hence left out of the test build.
+// " <N>ms" in green on the last line, up to the moment before writing, and under a millisecond
+// " <N>µs", where whole milliseconds would show 0; where it starts is os_run_ms's. Not upstream
+// output, hence left out of the test build.
 static void append_run_time(sb *out) {
     if (out->n && out->p[out->n - 1] == '\n') out->n--;
     sb_us(out, US(" \x1b[32m"));
-    sb_int(out, (int64_t)(os_run_ms() + 0.5));
-    sb_us(out, US("ms\x1b[0m\n"));
+    double ms = os_run_ms();
+    int64_t micros = (int64_t)(ms * 1000 + 0.5);
+    if (micros < 1000) sb_int(out, micros), sb_us(out, US("\u00b5s\x1b[0m\n"));
+    else sb_int(out, (int64_t)(ms + 0.5)), sb_us(out, US("ms\x1b[0m\n"));
 }
 #endif
 

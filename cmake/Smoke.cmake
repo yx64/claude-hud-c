@@ -96,7 +96,7 @@ function(refresh exe out_var code_var)
 endfunction()
 
 string(ASCII 27 esc)
-set(run_time " ${esc}\\[32m[0-9]+ms${esc}\\[0m\n$")
+set(run_time " ${esc}\\[32m[0-9]+(ms|µs)${esc}\\[0m\n$")
 
 refresh(${test} t0 t0_code)
 set(compare FALSE)

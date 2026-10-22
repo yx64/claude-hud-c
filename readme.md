@@ -15,7 +15,7 @@ Context █████░░░░░ 45% │ Usage ███░░░░░░
 ```
 
 The same as claude-hud prints, except that the last line also ends with the refresh's run time in green, such as
-` 6ms`.
+` 6ms`, or under a millisecond in microseconds, such as ` 412µs`.
 
 claude-hud-c is an independent project, not affiliated with Anthropic or with claude-hud's author.
 
