@@ -9,7 +9,7 @@
 
 // GIT_NO_LAZY_FETCH: a partial clone fetches a missing object through the remote its own config names,
 // with that config's core.sshCommand or uploadpack, so a repository could still run a command of its own;
-// a status that needs such an object fails instead. Upstream fetches. Git older than 2.44 ignores it.
+// a status that needs such an object fails instead. Upstream fetches. Git older than 2.45 ignores it.
 static const char *const GIT_ENV[] = {"GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0", "GCM_INTERACTIVE=Never", "GIT_NO_LAZY_FETCH=1",
                                       nullptr};
 
