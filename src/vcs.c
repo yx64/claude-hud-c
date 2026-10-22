@@ -114,10 +114,61 @@ static bool parse_digits(us s, double *v) {  // Number.parseInt(s, 10) for git's
     return true;
 }
 
+// QUIET, then what keeps git from running commands a repository's own config names: core.fsmonitor on
+// every status, and filter drivers whenever git hashes a changed file. Both are turned off for drivers
+// that do not come from the user's global or system config, so git-lfs keeps working; a driver name git
+// cannot take back in -c makes git refuse to run.
+typedef struct { const char **p; int n; } Args;
+
+static Args safe_args(us git, us cwd) {
+    us out, *f;
+    int nf = 0;
+    // exits 1 when no filter is configured
+    if (run_git(git, cwd, (const char *const[]){"config", "--show-scope", "-z", "--get-regexp", "^filter\\.", nullptr}, 1000, &out) == RUN_OK)
+        nf = split_nul(out, &f);
+    us *names = arena_alloc(sizeof(us) * (size_t)(nf / 2 + 1));
+    int nn = 0;
+    for (int i = 0; i + 1 < nf; i += 2) {
+        if (us_eq_c(f[i], "global") || us_eq_c(f[i], "system")) continue;
+        us key = f[i + 1];
+        int32_t nl = us_find_ch(key, '\n', 0);
+        if (nl >= 0) key.n = nl;
+        int32_t dot = key.n - 1;
+        while (dot >= 0 && key.p[dot] != '.') dot--;
+        us name = dot > 7 ? us_slice(key, 7, dot) : US_EMPTY;  // filter.<name>.<key>
+        bool seen = !name.n;
+        for (int k = 0; k < nn && !seen; k++) seen = us_eq(names[k], name);
+        if (!seen) names[nn++] = name;
+    }
+    static const char *const head[] = {QUIET, "-c", "core.fsmonitor=false"};
+    static const char *const keys[] = {"clean=", "process=", "required=false"};
+    Args a = {arena_alloc(sizeof(char *) * (countof(head) + 2 * countof(keys) * (size_t)nn)), 0};
+    for (size_t j = 0; j < countof(head); j++) a.p[a.n++] = head[j];
+    for (int k = 0; k < nn; k++)
+        for (size_t j = 0; j < countof(keys); j++) {
+            size_t len;
+            a.p[a.n++] = "-c";
+            a.p[a.n++] = us_to_utf8(us_cat(US("filter."), names[k], US("."), us_c(keys[j])), &len);
+        }
+    return a;
+}
+
+// safe, then tail (null-terminated)
+static const char *const *with(Args safe, const char *const *tail) {
+    int nt = 0;
+    while (tail[nt]) nt++;
+    const char **a = arena_alloc(sizeof(char *) * (size_t)(safe.n + nt + 1));
+    memcpy(a, safe.p, sizeof(char *) * (size_t)safe.n);
+    memcpy(a + safe.n, tail, sizeof(char *) * (size_t)(nt + 1));
+    return a;
+}
+
 VcsStatus *git_status(us cwd, jv repo, bool line_diffs) {
     us git, out;
     if (!os_find_git(&git)) return nullptr;
-    int r = run_git(git, cwd, (const char *const[]){QUIET, "status", "--porcelain=v2", "--branch", "-z", nullptr}, 1000, &out);
+    Args safe = safe_args(git, cwd);
+    // Uncommitted changes inside a submodule do not make the repository dirty, and git inside one reads its config.
+    int r = run_git(git, cwd, with(safe, (const char *const[]){"status", "--porcelain=v2", "--branch", "-z", "--ignore-submodules=dirty", nullptr}), 1000, &out);
     VcsStatus *st = arena_alloc(sizeof *st);
     *st = (VcsStatus){0};
     if (r == RUN_TIMEOUT) {
@@ -182,7 +233,10 @@ VcsStatus *git_status(us cwd, jv repo, bool line_diffs) {
     st->branch_url = github_ref_url(repo, branch);
     if (!st->dirty) return st;
     st->has_file_stats = true;
-    if (line_diffs && run_git(git, cwd, (const char *const[]){QUIET, "diff", "--numstat", "-z", "HEAD", nullptr}, 2000, &out) == RUN_OK) {
+    // diff-index, not diff: porcelain diff refreshes stale stat data into .git/index whatever
+    // --no-optional-locks says, and a timeout mid-write leaves .git/index.lock behind. -M keeps the
+    // rename detection diff turns on by default.
+    if (line_diffs && run_git(git, cwd, with(safe, (const char *const[]){"diff-index", "-M", "--numstat", "-z", "--ignore-submodules=dirty", "HEAD", nullptr}), 2000, &out) == RUN_OK) {
         // "added\tdeleted\tpath", or for a rename an empty path followed by the old and new paths
         nrec = split_nul(out, &rec);
         typedef struct { us path; double a, d; } Diff;

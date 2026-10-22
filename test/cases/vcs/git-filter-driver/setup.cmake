@@ -1,0 +1,25 @@
+# A repository in the cwd, with a fixed identity and fixed dates so that commit ids never change.
+set(ENV{GIT_AUTHOR_NAME} t)
+set(ENV{GIT_AUTHOR_EMAIL} t@t)
+set(ENV{GIT_COMMITTER_NAME} t)
+set(ENV{GIT_COMMITTER_EMAIL} t@t)
+set(ENV{GIT_AUTHOR_DATE} "2026-10-10T10:00:00Z")
+set(ENV{GIT_COMMITTER_DATE} "2026-10-10T10:00:00Z")
+function(git)
+  execute_process(COMMAND git ${ARGN} WORKING_DIRECTORY ${HUD_DIR}/proj OUTPUT_QUIET ERROR_VARIABLE err RESULT_VARIABLE code
+                  TIMEOUT ${HUD_RUN_TIMEOUT})
+  if(NOT code EQUAL 0)
+    message(FATAL_ERROR "git ${ARGN}: ${code} ${err}")
+  endif()
+endfunction()
+git(init -q -b main)
+git(config core.autocrlf input)
+file(WRITE ${HUD_DIR}/proj/.gitattributes "*.txt filter=boom\n")
+file(WRITE ${HUD_DIR}/proj/a.txt "one\n")
+git(add .)
+git(commit -q -m init)
+# A filter driver from the repository's own config whose command fails and is required: git hashing
+# the file again, after its time changes, would refuse to run unless the driver is turned off.
+git(config filter.boom.clean false)
+git(config filter.boom.required true)
+file(TOUCH ${HUD_DIR}/proj/a.txt)
