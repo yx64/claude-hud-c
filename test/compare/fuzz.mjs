@@ -27,6 +27,8 @@ const TEXT = [
   'C:\\Users\\a b\\file.txt', '/unix/path/to/some/deeply/nested/file-name.js', 'claude-opus-4-7', 'claude-haiku-4-5-20251001[1m]',
   'claude-3-5-sonnet-20240620', 'claude-', 'opus', 'Sonnet', 'gpt-4o', '\uD83D', '\uDE00x', 'ﬁ ligature', 'İstanbul', '<synthetic>',
   'multi\nline\tcommand  with   spaces', '\x1b[1m\x1b[0m',
+  // long enough to be cut, with graphemes of several code units at every position
+  '😀'.repeat(40), 'e\u0301'.repeat(40), 'a😀'.repeat(30), 'ab👍🏽'.repeat(20), '🇨🇳'.repeat(20), 'x'.repeat(19) + '😀' + 'y'.repeat(40),
 ];
 const TOOL_NAMES = ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash', 'Skill', 'Task', 'Agent', 'TodoWrite', 'TaskCreate', 'TaskUpdate',
   'mcp__github__create_issue', 'mcp__a__b__c', 'mcp____x', 'mcp__srv__', 'WebSearch', 'PowerShell', 'mcp__中文__工具', 'X'];

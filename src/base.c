@@ -668,6 +668,32 @@ static us strip_escapes(us s) {
     return sb_done(&b);
 }
 
+int32_t grapheme_end(us s, int32_t i) {
+    int32_t l;
+    utf8proc_int32_t state = 0;
+    uint32_t c1 = us_cp_at(s, i, &l);
+    int32_t j = i + l;
+    while (j < s.n) {
+        int32_t l2;
+        uint32_t c2 = us_cp_at(s, j, &l2);
+        if (utf8proc_grapheme_break_stateful((utf8proc_int32_t)c1, (utf8proc_int32_t)c2, &state)) break;
+        c1 = c2, j += l2;
+    }
+    return j;
+}
+
+us truncate_string(us s, double max, us suffix) {
+    if (s.n <= max) return s;
+    double limit = max - suffix.n > 0 ? max - suffix.n : 0;
+    int32_t end = 0;
+    for (int32_t g = 0; g < s.n;) {
+        g = grapheme_end(s, g);
+        if (g > limit) break;
+        end = g;
+    }
+    return us_cat(us_slice(s, 0, end), suffix);
+}
+
 us sanitize_display(us s) {
     // Plain text, the usual case, comes back as it is: every replace needs a character the last
     // one drops, and the escape replaces need ESC, which is one of those.

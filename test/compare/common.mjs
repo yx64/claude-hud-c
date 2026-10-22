@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 // The upstream version the port reproduces. Moving to another one is a deliberate step: change
 // this, run the comparison scripts against that version's source, and follow up on every difference.
-export const VERSION = '0.12.0';
+export const VERSION = '0.12.1';
 
 const runner = fileURLToPath(new URL('./run-upstream.mjs', import.meta.url));
 const fakeClock = fileURLToPath(new URL('./fakeclock.mjs', import.meta.url));

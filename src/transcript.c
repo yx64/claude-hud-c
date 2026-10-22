@@ -144,7 +144,7 @@ static bool short_name(jv v, us *out) {
     if (!jis_str(v)) return false;
     us s = us_trim(sanitize_display(jstr(v)));
     if (!s.n) return false;
-    *out = s.n <= 64 ? s : us_cat(us_slice(s, 0, 63), US("…"));
+    *out = truncate_string(s, 64, US("…"));
     return true;
 }
 
@@ -169,7 +169,7 @@ static bool mcp_server(us name, us *out) {
         if (name.p[i] == '_' && name.p[i + 1] == '_') {
             us s = us_trim(sanitize_display(us_slice(name, 5, i)));
             if (!s.n) return false;
-            *out = s.n <= 64 ? s : us_cat(us_slice(s, 0, 63), US("…"));
+            *out = truncate_string(s, 64, US("…"));
             return true;
         }
     }
@@ -244,7 +244,7 @@ static bool tool_target(jv name, jv input, us *out) {
         }
         us cmd = us_trim(sb_done(&b));
         if (!cmd.n) return false;
-        *out = cmd.n > 30 ? us_cat(us_trim_end(us_slice(cmd, 0, 30)), US("...")) : cmd;
+        *out = cmd.n > 30 ? us_cat(us_trim_end(truncate_string(cmd, 30, US_EMPTY)), US("...")) : cmd;
         return true;
     }
     return false;

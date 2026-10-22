@@ -173,20 +173,6 @@ static bool is_mark(uint32_t c) {
     return k == UTF8PROC_CATEGORY_MN || k == UTF8PROC_CATEGORY_MC || k == UTF8PROC_CATEGORY_ME;
 }
 
-static int32_t grapheme_end(us s, int32_t i) {
-    int32_t l;
-    utf8proc_int32_t state = 0;
-    uint32_t c1 = us_cp_at(s, i, &l);
-    int32_t j = i + l;
-    while (j < s.n) {
-        int32_t l2;
-        uint32_t c2 = us_cp_at(s, j, &l2);
-        if (utf8proc_grapheme_break_stateful((utf8proc_int32_t)c1, (utf8proc_int32_t)c2, &state)) break;
-        c1 = c2, j += l2;
-    }
-    return j;
-}
-
 static int grapheme_width(us g, bool amb) {
     int32_t l;
     uint32_t first = us_cp_at(g, 0, &l);
@@ -719,7 +705,7 @@ static us added_dirs(us prefix, us joiner) {
         us dir = jstr(v), segs[256];
         int ns = split_segments(dir, segs, 256);
         us name = sanitize_display(ns ? segs[ns - 1] : dir);
-        if (name.n > 24) name = CAT(us_slice(name, 0, 23), US("…"));
+        name = truncate_string(name, 24, US("…"));
         if (name.n) dirs[n] = dir, names[n++] = name;
     }
     if (!n) return US_EMPTY;
@@ -1399,8 +1385,7 @@ static us shorten_tool_name(us raw, double max) {
             shown = us_slice(name, last + 2, name.n);
         }
     }
-    if (shown.n <= max) return shown;
-    return CAT(us_slice(shown, 0, max - 1 > 0 ? (int32_t)fmin(max - 1, INT32_MAX) : 0), US("…"));
+    return truncate_string(shown, max, US("…"));
 }
 
 static us shorten_path(us target) {
@@ -1413,7 +1398,7 @@ static us shorten_path(us target) {
     while (slash >= 0 && n.p[slash] != '/') slash--;
     us file = us_slice(n, slash + 1, n.n);
     if (!file.n) file = n;
-    return file.n >= 20 ? CAT(us_slice(file, 0, 17), US("...")) : CAT(US(".../"), file);
+    return file.n >= 20 ? truncate_string(file, 20, US("...")) : CAT(US(".../"), file);
 }
 
 // `◐ Edit: auth.ts | ✓ Read ×3 | +2 more`: the two newest running tools, then completed counts
@@ -1462,7 +1447,7 @@ static us names_line(us title, us *names, int count, double max_visible) {
     int n = 0;
     for (int i = 0; i < count && n < 256; i++) {
         us s = us_trim(sanitize_display(names[i]));
-        if (s.n) safe[n++] = s.n <= 64 ? s : CAT(us_slice(s, 0, 63), US("…"));
+        if (s.n) safe[n++] = truncate_string(s, 64, US("…"));
     }
     if (!n) return US_EMPTY;
     int shown = max_visible == 0 || n < max_visible ? n : (int)max_visible;
@@ -1471,11 +1456,6 @@ static us names_line(us title, us *names, int count, double max_visible) {
     int nv = shown;
     if (n > shown) vis[nv++] = label(CAT(US("+"), num(n - shown), US(" more")));
     return CAT(green(US("✓")), US(" "), title, US(" "), label(CAT(US("("), num(n), US(")"))), US(": "), join(vis, nv, US(", ")));
-}
-
-static us truncate_string(us s, int max) {
-    if (!s.n) return US_EMPTY;
-    return s.n <= max ? s : CAT(us_slice(s, 0, max - 3 > 0 ? max - 3 : 0), US("..."));
 }
 
 static bool all_digits(us s) {
@@ -1590,13 +1570,13 @@ static us agents_line(void) {
     for (int i = 0; i < ns; i++) {
         Agent *a = shown[i];
         us icon = a->status == ST_RUNNING ? yellow(US("◐")) : green(US("✓"));
-        us type = truncate_string(us_trim(sanitize_display(a->type)), 24);
+        us type = truncate_string(us_trim(sanitize_display(a->type)), 24, US("..."));
         // [model effort], either one alone, or nothing
         us badge[2], level, symbol;
         int nb = 0;
         if (a->model.n && short_model(a->model, &badge[nb])) nb++;
         if (CF->d.show_agent_effort && a->effort.n && effort_info(a->effort, &level, &symbol)) badge[nb++] = format_effort(level, symbol);
-        us desc = truncate_string(us_trim(sanitize_display(a->desc)), 40);
+        us desc = truncate_string(us_trim(sanitize_display(a->desc)), 40, US("..."));
         lines[i] = CAT(icon, US(" "), magenta(type.n ? type : US("agent")), nb ? CAT(US(" "), label(CAT(US("["), join(badge, nb, US(" ")), US("]")))) : US_EMPTY,
                        desc.n ? label(CAT(US(": "), desc)) : US_EMPTY, US(" "), label(CAT(US("("), agent_elapsed(a), US(")"))));
     }
@@ -1614,7 +1594,7 @@ static us todos_line(void) {
         if (!current && tr->todos[i].status == TD_IN_PROGRESS) current = &tr->todos[i];
     }
     us progress = label(CAT(US("("), num(completed), US("/"), num(tr->ntodos), US(")")));
-    if (current) return CAT(yellow(US("▸")), US(" "), truncate_string(sanitize_display(current->content), 50), US(" "), progress);
+    if (current) return CAT(yellow(US("▸")), US(" "), truncate_string(sanitize_display(current->content), 50, US("...")), US(" "), progress);
     return completed == tr->ntodos ? CAT(green(US("✓")), US(" "), t(T_ALL_TODOS), US(" "), progress) : US_EMPTY;
 }
 

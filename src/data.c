@@ -303,7 +303,7 @@ static bool external_usage(Ctx *ctx, Usage *u) {
     jv bl = jget(s, "balance_label");
     if (jis_str(bl)) {
         us l = us_trim(sanitize_display(jstr(bl)));
-        if (l.n) u->has_balance = true, u->balance = l.n <= 50 ? l : us_cat(us_slice(l, 0, 47), US("..."));
+        if (l.n) u->has_balance = true, u->balance = truncate_string(l, 50, US("..."));
     }
     jv ms = jget(s, "model_scoped");
     if (jis_arr(ms)) {

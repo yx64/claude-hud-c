@@ -110,6 +110,10 @@ double date_from_json(jv v);  // new Date(value)
 us iso_string(double ms);     // Date.prototype.toISOString
 
 us sanitize_display(us s);    // utils/sanitize.js sanitizeDisplayText
+int32_t grapheme_end(us s, int32_t i);  // where the grapheme starting at i ends, as Intl.Segmenter splits
+// utils/truncate.js truncateString: at most max UTF-16 code units, cut between graphemes, ending in
+// suffix when cut
+us truncate_string(us s, double max, us suffix);
 void js_string_of(sb *b, jv v);  // String(value)
 
 // Files, on top of the platform layer's write_bytes and handles.
