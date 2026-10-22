@@ -45,7 +45,8 @@ static_assert(sizeof(AnyVec) == sizeof(StrVec) && sizeof(AnyVec) == sizeof(Agent
 
 // Where each kind of element keeps its strings.
 static const size_t TOOL_STRS[] = {offsetof(Tool, name), offsetof(Tool, target)};
-static const size_t AGENT_STRS[] = {offsetof(Agent, type), offsetof(Agent, desc), offsetof(Agent, model)};
+static const size_t AGENT_STRS[] = {offsetof(Agent, type), offsetof(Agent, desc), offsetof(Agent, model), offsetof(Agent, agent_id),
+                                    offsetof(Agent, effort)};
 static const size_t TODO_STRS[] = {offsetof(Todo, content)};
 static const size_t STR_STRS[] = {0};
 
@@ -165,7 +166,8 @@ bool state_save(const TranscriptFile *f, const StateSlot *slot, uint64_t off, co
     AT(&b, h, Header)->transcript = ref(ta);
     AT(&b, pa, Parser)->r = nullptr;
     static const size_t maps[] = {offsetof(Parser, tools), offsetof(Parser, agents), offsetof(Parser, skills), offsetof(Parser, mcp),
-                                  offsetof(Parser, mcp_err), offsetof(Parser, completions), offsetof(Parser, usage), offsetof(Parser, task_idx)};
+                                  offsetof(Parser, mcp_err), offsetof(Parser, completions), offsetof(Parser, usage), offsetof(Parser, task_idx),
+                                  offsetof(Parser, agent_ids)};
     for (size_t i = 0; i < countof(maps); i++) put_map(&b, pa + maps[i]);
     put_vec(&b, pa + offsetof(Parser, toolv), sizeof(Tool), TOOL_STRS, countof(TOOL_STRS));
     put_vec(&b, pa + offsetof(Parser, agentv), sizeof(Agent), AGENT_STRS, countof(AGENT_STRS));
@@ -246,7 +248,7 @@ static bool map_in(const omap *m, int32_t n) {
 }
 
 static bool fix_parser(Span f, Parser *p) {
-    omap *maps[] = {&p->tools, &p->agents, &p->skills, &p->mcp, &p->mcp_err, &p->completions, &p->usage, &p->task_idx};
+    omap *maps[] = {&p->tools, &p->agents, &p->skills, &p->mcp, &p->mcp_err, &p->completions, &p->usage, &p->task_idx, &p->agent_ids};
     for (size_t i = 0; i < countof(maps); i++)
         if (!fix_map(f, maps[i])) return false;
     return fix_vec(f, &p->toolv, sizeof(Tool), TOOL_STRS, countof(TOOL_STRS)) &&
@@ -254,7 +256,8 @@ static bool fix_parser(Span f, Parser *p) {
            fix_vec(f, &p->todos, sizeof(Todo), TODO_STRS, countof(TODO_STRS)) &&
            fix_vec(f, &p->skillv, sizeof(us), STR_STRS, countof(STR_STRS)) && fix_vec(f, &p->mcpv, sizeof(us), STR_STRS, countof(STR_STRS)) &&
            fix_vec(f, &p->errv, sizeof(us), STR_STRS, countof(STR_STRS)) && map_in(&p->tools, p->toolv.n) && map_in(&p->agents, p->agentv.n) &&
-           map_in(&p->skills, p->skillv.n) && map_in(&p->mcp, p->mcpv.n) && map_in(&p->mcp_err, p->errv.n) && map_in(&p->task_idx, p->todos.n);
+           map_in(&p->skills, p->skillv.n) && map_in(&p->mcp, p->mcpv.n) && map_in(&p->mcp_err, p->errv.n) && map_in(&p->task_idx, p->todos.n) &&
+           map_in(&p->agent_ids, p->agents.n);
 }
 
 bool state_load(const TranscriptFile *f, StateSlot *slot, Parser *s, uint64_t *off) {

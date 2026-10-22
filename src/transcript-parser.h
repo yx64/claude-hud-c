@@ -14,6 +14,7 @@ typedef VEC(us) StrVec;
 // as well.
 typedef struct {
     omap tools, agents, skills, mcp, mcp_err, completions, usage, task_idx;
+    omap agent_ids;  // agentIdToToolUseId: a subagent's id to the index of its entry in agents
     ToolVec toolv;
     AgentVec agentv;
     StrVec skillv, mcpv, errv;

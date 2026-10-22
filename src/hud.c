@@ -131,7 +131,16 @@ static void run(const char *buf, size_t n, sb *out) {
     Transcript tr = {.session_start = NAN, .last_assistant_at = NAN};
     if (needs_transcript(&cfg, root)) {
         jv tp = jget(root, "transcript_path");
-        if (jis_str(tp)) parse_transcript(jstr(tp), ctx.now, &tr);
+        if (jis_str(tp)) {
+            parse_transcript(jstr(tp), ctx.now, &tr);
+            // Only the agents the line will show, since each lookup opens a file.
+            if (cfg.d.show_agents && cfg.d.show_agent_effort) {
+                Agent *shown[3];
+                int ns = shown_agents(&tr, ctx.now, shown);
+                for (int i = 0; i < ns; i++)
+                    if (shown[i]->agent_id.n) shown[i]->effort = subagent_effort(jstr(tp), shown[i]->agent_id);
+            }
+        }
     }
     ctx.t = &tr;
     ctx.vcs = vcs_status(&cfg, root);

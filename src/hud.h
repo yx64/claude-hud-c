@@ -21,6 +21,8 @@ typedef struct { us name, target; int status; } Tool;
 
 typedef struct {
     us type, desc, model;
+    us agent_id;  // Claude Code's id for the subagent, which names its own transcript
+    us effort;    // read from that transcript for the agents shown (subagent_effort), else empty
     bool background;
     int status;
     double start, end;
@@ -46,6 +48,9 @@ typedef struct {
 } Transcript;
 
 void parse_transcript(us path, double now, Transcript *t);  // now: the refresh's clock, for lines without a time
+// The effort of the subagent behind agent_id: the first assistant record of its own transcript beside
+// <path>; empty when there is none.
+us subagent_effort(us path, us agent_id);
 #if defined(HUD_C_TRACE)
 extern const char *g_transcript_state;  // how parse_transcript used and kept its saved state, for the trace log
 #endif
@@ -54,7 +59,7 @@ bool sanitize_model(jv v, us *out);  // model-source.js sanitizeTranscriptModel
 // ---- config.js mergeConfig ----
 
 enum { EL_PROJECT, EL_ADDED_DIRS, EL_CONTEXT, EL_USAGE, EL_PROMPT_CACHE, EL_CACHE_HIT_RATE, EL_MEMORY, EL_ENVIRONMENT,
-       EL_TOOLS, EL_SKILLS, EL_MCP, EL_AGENTS, EL_TODOS, EL_SESSION_TIME, EL_COUNT };
+       EL_TOOLS, EL_SKILLS, EL_MCP, EL_AGENTS, EL_TODOS, EL_SESSION_TIME, EL_SESSION_TOKENS, EL_COUNT };
 enum { SEG_MODEL, SEG_PROJECT, SEG_ADVISOR, SEG_SESSION_NAME, SEG_VERSION, SEG_EXTRA, SEG_DURATION, SEG_COST,
        SEG_SPEED, SEG_AUTH, SEG_COUNT };
 enum { CV_PERCENT, CV_TOKENS, CV_REMAINING, CV_BOTH };
@@ -86,7 +91,7 @@ typedef struct {
         bool show_token_breakdown, show_usage, usage_remaining, usage_bar, show_reset_label, usage_compact, show_model_scoped, usage_pace;
         bool show_tools, show_skills, show_mcp, show_agents, show_todos, show_session_name, show_auth, show_auth_user;
         double tool_name_max, tools_max_visible, skills_max_visible, auth_user_length;
-        bool show_cc_version, show_effort, show_memory, show_prompt_cache, show_cache_hit_rate, show_session_tokens;
+        bool show_cc_version, show_effort, show_agent_effort, show_memory, show_prompt_cache, show_cache_hit_rate, show_session_tokens;
         bool show_output_style, show_session_start, show_last_response, show_compactions;
         int effort_format;
         double ctx_warn, ctx_crit, usage_threshold, seven_day_threshold, env_threshold;
@@ -163,6 +168,7 @@ void output_speed(Ctx *ctx);
 bool native_cost(Ctx *ctx, double *out);
 
 void render(Ctx *ctx, sb *out);
+int shown_agents(Transcript *t, double now, Agent **out);  // activity.js shownAgents: at most three
 double js_round(double x);
 double to_percent(double v);  // rounded, then clamped to 0..100
 bool is_bedrock_id(jv id);

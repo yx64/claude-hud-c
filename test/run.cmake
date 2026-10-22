@@ -184,6 +184,8 @@ function(refresh case dir)
   set(written ${dir}/claude/plugins/claude-hud)
   file(GLOB_RECURSE names RELATIVE ${written} ${written}/*)
   list(REMOVE_ITEM names config.json)
+  # Upstream's own parse cache; the port keeps its parse state elsewhere, in a form of its own.
+  list(FILTER names EXCLUDE REGEX "^transcript-cursors/")
   string(SHA256 tsha "${HUD_NATIVE_TRANSCRIPT}")
   set(files "")
   foreach(n IN LISTS names)

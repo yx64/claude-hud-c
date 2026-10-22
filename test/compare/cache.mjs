@@ -1,12 +1,14 @@
-// The saved transcript state: a refresh that resumes from it must print exactly what a full parse
-// prints. Transcripts (copies of real ones, and synthetic ones mixing every line terminator) grow
-// in place cut point by cut point: at line ends, inside lines, right after a \r, inside the three
-// bytes of U+2028. At each step the test build, resuming, is compared with the reference parsing
-// the same bytes, and the saved state must sit right after the last complete line. Then the cases
-// where a saved state must not be taken up: the file rewritten in its first bytes or just before
-// the offset, replaced by another file, cut shorter, the state file damaged or cut short; two
-// transcripts with one file name, whose states share a name; plus an unsupported case inside the
-// saved part, and a line that takes the clock. Usage:
+// The saved transcript state: a refresh that resumes from it must print exactly what the reference
+// prints, which upstream resumes from a saved state of its own (transcript-cursors). Transcripts (copies
+// of real ones, and synthetic ones mixing every line terminator) grow in place cut point by cut point: at
+// line ends, inside lines, right after a \r, inside the three bytes of U+2028. At each step the test
+// build, resuming, is compared with the reference reading the same bytes, and the saved state must sit
+// right after the last \n. Then the cases where a saved state must not be taken up: the file rewritten
+// in its first bytes or just before the offset, replaced by another file, cut shorter, the state file
+// damaged or cut short; two transcripts with one file name, whose states share a name; plus an
+// unsupported case inside the saved part, and a line that takes the clock. A file rewritten in place
+// keeps its identity and length, which upstream takes for an unchanged one: there the reference parses
+// from the start, which is what the port does. Usage:
 //   node cache.mjs <HudTestExe> <Reference> <WorkDir> [maxRealTranscripts]
 import fs from 'node:fs';
 import os from 'node:os';
@@ -35,7 +37,11 @@ let seq = 0;
 const stats = { steps: 0, equal: 0, diff: 0, offsetWrong: 0, unsupported: 0 };
 const failures = [];
 
-async function refresh(tp, cache, extraEnv = {}) {
+// Upstream's saved states, which a reference run that must parse from the start goes without.
+const cursors = path.join(cfg, 'plugins', 'claude-hud', 'transcript-cursors');
+
+async function refresh(tp, cache, extraEnv = {}, freshReference = false) {
+  if (freshReference) fs.rmSync(cursors, { recursive: true, force: true });
   const input = JSON.stringify({ session_id: 's', transcript_path: tp, cwd: workDir, model: { id: 'claude-opus-5-5', display_name: 'Opus' },
     effort: { level: 'high' } });
   const env = { ...process.env, CLAUDE_CONFIG_DIR: cfg, HUD_FAKE_NOW_MS: String(NOW), HUD_FAKE_MEM: '17179869184:5368709120', ...extraEnv };
@@ -60,28 +66,8 @@ function compare(label, { rc, rn }) {
   return same;
 }
 
-// Where the saved state should be after a refresh of buf: right after the last line that is
-// complete, as parse_transcript decides it (readline's terminators; a \r at the very end may
-// still become \r\n).
-function resumeOffset(buf) {
-  let i = 0;
-  for (;;) {
-    let j = i;
-    let term = 1;
-    for (; j < buf.length; j++) {
-      const b = buf[j];
-      if (b === 0x0a || b === 0x0d) break;
-      if (b === 0xe2 && j + 2 < buf.length && buf[j + 1] === 0x80 && (buf[j + 2] === 0xa8 || buf[j + 2] === 0xa9)) {
-        term = 3;
-        break;
-      }
-    }
-    if (j >= buf.length || (buf[j] === 0x0d && j + 1 === buf.length)) return i;
-    if (buf[j] === 0x0d && buf[j + 1] === 0x0a) j++;
-    i = j + term;
-    if (i === buf.length) return i;
-  }
-}
+// Where the saved state should be after a refresh of buf: right after the last \n, the only line end.
+const resumeOffset = (buf) => buf.lastIndexOf(0x0a) + 1;
 
 // The offset recorded in the state saved for tp, or null when there is none: <Cache>/<name>.bin for
 // <name>.jsonl, the offset at byte 8 (transcript-state.c's Header).
@@ -91,17 +77,18 @@ function savedOffset(cache, tp) {
 }
 
 // Grows tp from nothing through the cut points, comparing at each step. The saved state must sit
-// right after the last complete line, or, given a limit, never past it.
-async function grow(name, bytes, cuts) {
+// right after the last complete line. Given a tick, the frozen clock moves on by that much every step.
+async function grow(name, bytes, cuts, tick = 0) {
   const tp = path.join(workDir, 't', `${name}.jsonl`);
   const cache = path.join(workDir, 'cache', `${name}-${seq++}`);
   fs.mkdirSync(path.dirname(tp), { recursive: true });
   fs.writeFileSync(tp, '');
   let at = 0;
+  let step = 0;
   for (const cut of [...cuts, cuts[cuts.length - 1]]) {
     if (cut > at) fs.appendFileSync(tp, bytes.subarray(at, cut));
     at = cut;
-    compare(`${name} @${cut}`, await refresh(tp, cache));
+    compare(`${name} @${cut}`, await refresh(tp, cache, { HUD_FAKE_NOW_MS: String(NOW + tick * step++) }));
     const want = resumeOffset(bytes.subarray(0, cut)) || null;
     const got = savedOffset(cache, tp);
     if (got !== want) {
@@ -209,9 +196,10 @@ function rewriteAt(bytes, needle, at, lo, hi) {
   const bytes = synthetic(syntheticLines(15), () => '\n');
   const { tp, cache } = await grow('invalidate', bytes, [bytes.length]);
   const read = '"name":"Read"', edit = '"name":"Edit"';
+  // The two rewrites in place are the steps the reference must not resume.
   const steps = [
-    ['first bytes rewritten', () => fs.writeFileSync(tp, rewriteAt(bytes, read, bytes.indexOf(read), 0, 4096 - read.length))],
-    ['bytes before the offset rewritten', () => fs.writeFileSync(tp, rewriteAt(bytes, edit, bytes.lastIndexOf(edit), Math.max(4096, bytes.length - 4096), bytes.length))],
+    ['first bytes rewritten', () => fs.writeFileSync(tp, rewriteAt(bytes, read, bytes.indexOf(read), 0, 4096 - read.length)), true],
+    ['bytes before the offset rewritten', () => fs.writeFileSync(tp, rewriteAt(bytes, edit, bytes.lastIndexOf(edit), Math.max(4096, bytes.length - 4096), bytes.length)), true],
     ['file replaced', () => {
       const other = `${tp}.new`;
       fs.writeFileSync(other, rewriteAt(bytes, read, bytes.indexOf(read, bytes.length / 2), 0, bytes.length));
@@ -228,11 +216,11 @@ function rewriteAt(bytes, needle, at, lo, hi) {
       }
     }],
   ];
-  for (const [label, act] of steps) {
+  for (const [label, act, inPlace] of steps) {
     fs.writeFileSync(tp, bytes);
-    compare(`invalidate: setup for ${label}`, await refresh(tp, cache));
+    compare(`invalidate: setup for ${label}`, await refresh(tp, cache, {}, true));
     act();
-    compare(`invalidate: ${label}`, await refresh(tp, cache));
+    compare(`invalidate: ${label}`, await refresh(tp, cache, {}, inPlace));
   }
 }
 
@@ -273,15 +261,16 @@ function rewriteAt(bytes, needle, at, lo, hi) {
   await grow('unsupported', bytes, [Math.floor(bytes.length / 2), bytes.length]);
 }
 
-// An agent's tool line without a time takes the clock of the refresh parsing it; a state is saved past
-// it all the same, and holds no clock, so later refreshes still agree with a full parse at their own clock.
+// An agent's tool line without a time takes the clock of the refresh parsing it, and a state is saved past
+// it holding that clock, as upstream's does: with the clock moving on a minute every step, later
+// refreshes show the time of the one that read the line.
 {
   const lines = syntheticLines(8);
   const timeless = { type: 'assistant', message: { id: 'nt', content: [{ type: 'tool_use', id: 'toolu_nt', name: 'Task', input: { description: 'no time' } }] } };
   lines.splice(6, 0, timeless);
   const bytes = synthetic(lines, () => '\n');
   const lineStart = bytes.indexOf(Buffer.from(JSON.stringify(timeless)));
-  await grow('timeless', bytes, [Math.floor(lineStart / 2), lineStart + 10, bytes.length]);
+  await grow('timeless', bytes, [Math.floor(lineStart / 2), lineStart + 10, bytes.length], 60000);
 }
 
 const report = path.join(workDir, 'cache-report.json');

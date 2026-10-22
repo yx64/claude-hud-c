@@ -24,8 +24,8 @@ claude-hud-c is an independent project, not affiliated with Anthropic or with cl
 - **No node.** claude-hud runs on node; on a machine that has no other use for node, installing it just for the status
   line is a heavy dependency. claude-hud-c is one executable with no runtime to install.
 - **Faster refreshes.** Claude Code reruns the status line command whenever the conversation updates. claude-hud starts
-  node and loads its modules every time, and reads the whole session transcript again; claude-hud-c starts in a few
-  milliseconds and only reads what was appended since the previous refresh.
+  node and loads its modules every time; claude-hud-c starts in a few milliseconds. Both read only what was appended to
+  the session transcript since the previous refresh, claude-hud since 0.12.0.
 
 ## Performance
 
@@ -37,8 +37,8 @@ One refresh, median (p50) and 90th percentile in ms:
 | 10 MB | 9.5 / 21.7 | 33.8 / 50.3 | 198.0 / 208.9 |
 
 "Through sh" is how Claude Code runs the command on Windows when Git Bash is set up; about 25 ms of it is sh itself.
-claude-hud's time grows with the transcript, because it parses the whole file on every refresh; claude-hud-c's barely
-moves.
+claude-hud's time grows with the transcript, because 0.10.0 parsed the whole file on every refresh; claude-hud-c's barely
+moves. claude-hud 0.12.0 reads only what was appended too, so its 10 MB figure would come closer to its 0.3 MB one.
 
 Measured on Windows, claude-hud 0.10.0 on node 24.21.0, Git Bash's sh, git status display off;
 40 rounds with the three forms alternated, CPU load 8% before and after; the two sh outputs were identical apart from
@@ -82,10 +82,11 @@ To read only what was appended since the previous refresh, claude-hud-c saves it
 `claude-hud-c/<TranscriptName>.bin` under the temporary directory: `%TEMP%` on Windows; on Linux and macOS the first
 of `TMPDIR`, `TMP`, `TEMP` that is set, else `/tmp`. A long session's file is a few hundred KB.
 
-This is claude-hud-c's own addition, not taken from claude-hud, and the reason its time in the table above stays flat
-as a session grows. claude-hud is welcome to the idea: parse only what was appended, keep the parser's state between
-refreshes, and trust a saved state only for the same file (by its identity) whose first block and the block before
-the saved offset still hash the same.
+This is claude-hud-c's own design, and the reason its time in the table above stays flat as a session grows: parse only
+what was appended, keep the parser's state between refreshes, and trust a saved state only for the same file (by its
+identity) whose first block and the block before the saved offset still hash the same. claude-hud 0.12.0 added
+incremental reading of its own, with its saved states under its plugin directory (`transcript-cursors`); claude-hud-c
+neither reads nor writes those.
 
 The files are a cache: deleting them is always safe, and a missing or outdated one only costs a full parse of that
 transcript on its next refresh, after which the state is saved again. A new build of claude-hud-c ignores the files an

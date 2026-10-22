@@ -34,6 +34,10 @@ const MODELS = ['claude-opus-5-5', 'claude-sonnet-4-5-20250929', 'claude-haiku-4
 
 let clock = Date.parse('2026-09-20T08:00:00.000Z');
 const ids = [];
+// The subagent ids launches report in toolUseResult.agentId, which completion notices and subagent
+// transcripts name.
+const agentIds = [];
+const someAgentId = () => (agentIds.length && chance(0.6) ? pick(agentIds) : pick([`a${int(1, 9)}`, 'a-b_c', 'bad id', '../x', 'x'.repeat(65)]));
 const iso = () => new Date((clock += int(0, 90000))).toISOString();
 
 // Mostly string ids, sometimes a number, so Map's typed keys are exercised.
@@ -90,6 +94,7 @@ function entry() {
     if (chance(0.9)) {
       e.message.usage = { input_tokens: int(0, 5000), output_tokens: int(0, 20000), cache_creation_input_tokens: int(0, 90000),
         cache_read_input_tokens: chance(0.9) ? int(0, 900000) : null };
+      if (chance(0.1)) e.message.usage = { input_tokens: 0, output_tokens: int(0, 50), cache_creation_input_tokens: 0, cache_read_input_tokens: 0 };
       if (chance(0.05)) e.message.usage = pick([5, 'x', { input_tokens: -3.7 }]);
     }
     if (chance(0.1)) e.advisorModel = pick(MODELS);
@@ -101,11 +106,20 @@ function entry() {
     } else {
       e.message = { content: Array.from({ length: int(1, 3) }, () => (chance(0.7) ? block() : { type: 'text', text: pick(['<command-message>x', 'plain', pick(TEXT)]) })) };
       if (chance(0.3)) e.toolUseResult = { resolvedModel: pick(MODELS), isAsync: chance(0.3), status: pick(['async_launched', 'done']) };
+      if (e.toolUseResult && chance(0.5)) {
+        const id = pick([`a${int(1, 9)}`, 'a-b_c', '', 5, 'bad id']);
+        e.toolUseResult.agentId = id;
+        if (typeof id === 'string' && id) agentIds.push(id);
+      }
     }
   } else if (r < 0.8) {
     Object.assign(e, { type: 'system', subtype: 'compact_boundary', compactMetadata: { postTokens: pick([int(0, 90000), -1, 'x', 1.5]) } });
   } else if (r < 0.85 && ids.length) {
-    Object.assign(e, { type: 'queue-operation', operation: 'enqueue', content: `<task-id>t${int(1, 9)}</task-id><tool-use-id>${pick(ids)}</tool-use-id>` });
+    // A completion notice, from either carrier, with the tool use id or the agent id alone.
+    const notice = pick([`<task-id>t${int(1, 9)}</task-id><tool-use-id>${pick(ids)}</tool-use-id>`, `<task-id>${someAgentId()}</task-id>`,
+      `<tool-use-id>${pick(ids)}</tool-use-id>`, `<task-id></task-id><tool-use-id>${pick(ids)}</tool-use-id>`, pick(TEXT)]);
+    if (chance(0.5)) Object.assign(e, { type: 'queue-operation', operation: 'enqueue', content: notice });
+    else Object.assign(e, { type: 'attachment', attachment: { type: 'queued_command', prompt: chance(0.95) ? notice : 5 } });
   } else if (r < 0.9) {
     Object.assign(e, { type: 'attachment', attachment: { type: pick(['ultra_effort_enter', 'ultra_effort_exit', 'other']) } });
   } else {
@@ -114,8 +128,31 @@ function entry() {
   return e;
 }
 
+// Only \n ends a line; the other terminators readline knew sit inside lines, and a character may be cut
+// at the end of the file.
+const JOINS = ['\n', '\r\n', '\r', '\u2028', '\n\r'];
+function join(lines) {
+  if (chance(0.85)) return lines.join(chance(0.1) ? '\r\n' : '\n');
+  return lines.reduce((text, line, i) => (i ? text + pick(JOINS) : '') + line, '');
+}
+
+// A run long enough to evict tools and agents from the parser's maps: past 256 tools, an MCP call's late
+// error no longer counts; past 10 agents, an evicted one's completion is dropped.
+function longRun(lines) {
+  const first = [];
+  for (let i = 0; i < int(250, 320); i++) {
+    const id = `toolu_long${i}`;
+    if (i < 5) first.push(id);
+    ids.push(id);
+    const name = i % 25 === 0 ? 'Task' : i < 5 ? 'mcp__late__call' : pick(['Read', 'Grep', 'mcp__srv__x']);
+    lines.push(JSON.stringify({ type: 'assistant', timestamp: iso(), message: { id: `msg_l${i}`, content: [{ type: 'tool_use', id, name, input: { file_path: 'f' } }] } }));
+  }
+  for (const id of first) lines.push(JSON.stringify({ type: 'user', timestamp: iso(), message: { content: [{ type: 'tool_result', tool_use_id: id, is_error: true }] } }));
+}
+
 function transcript() {
   ids.length = 0;
+  agentIds.length = 0;
   clock = Date.parse('2026-09-20T08:00:00.000Z') + int(0, 86400000);
   const lines = [];
   for (let i = 0, n = int(5, 200); i < n; i++) {
@@ -123,12 +160,31 @@ function transcript() {
     if (r < 0.02) lines.push('');
     else if (r < 0.03) lines.push('   ');
     else if (r < 0.04) lines.push(pick(['null', '5', '[]', '"str"', '{"type":"assistant"', '{bad json}', '[{"type":"assistant"}]']));
+    else if (r < 0.045) longRun(lines);
     else lines.push(JSON.stringify(entry()));
   }
-  let text = lines.join(chance(0.1) ? '\r\n' : '\n');
+  let text = join(lines);
   if (chance(0.7)) text += '\n';
   if (chance(0.05)) text += '{"type":"user","timestamp":"2026-09-2';
-  return text;
+  if (chance(0.03)) text += JSON.stringify(entry()) + pick(['\u2028', '\r', '']);
+  const bytes = Buffer.from(text);
+  return chance(0.03) ? Buffer.concat([bytes, Buffer.from('\u2028').subarray(0, int(1, 2))]) : bytes;
+}
+
+// The transcripts of the subagents a transcript names, beside it: the first assistant record's effort
+// is what the agents line shows.
+function subagents(tp) {
+  const dir = path.join(path.dirname(tp), path.basename(tp, '.jsonl'), 'subagents');
+  for (const id of new Set(agentIds)) {
+    if (chance(0.2)) continue;
+    fs.mkdirSync(dir, { recursive: true });
+    const before = Array.from({ length: int(0, 3) }, () => pick(['', '{bad', JSON.stringify({ type: 'user', effort: 'low' }), 'null', '"assistant"',
+      JSON.stringify([{ type: 'assistant', effort: 'low' }])]));
+    const reply = { type: 'assistant', message: { content: [] } };
+    if (chance(0.9)) reply.effort = pick(['high', 'MAX ', 'medium', '', '  ', 'weird', 'XHIGH', 'ultracode', 5, null, '\x1b[31mlow\x1b[0m', 'e'.repeat(40)]);
+    const lines = [...before, JSON.stringify(reply), JSON.stringify({ type: 'assistant', effort: 'low' })];
+    fs.writeFileSync(path.join(dir, `agent-${id}.jsonl`), lines.join(pick(['\n', '\r\n', '\r', '\u2028'])));
+  }
 }
 
 const B = [true, false];
@@ -138,7 +194,7 @@ const DISPLAY = {
   showDuration: B, showTokenBreakdown: B, showUsage: B, usageValue: ['percent', 'remaining'], usagePace: B,
   usageBarEnabled: B, showResetLabel: B, usageCompact: B, showModelScopedUsage: B,
   showTools: B, showSkills: B, showMcp: B, toolNameMaxLength: [0, 1, 5, 20, 2.5], toolsMaxVisible: [0, 1, 4, 10], skillsMaxVisible: [0, 1, 4],
-  showAgents: B, showTodos: B, showSessionName: B, showAuth: B, showAuthUser: B,
+  showAgents: B, showAgentEffort: B, showTodos: B, showSessionName: B, showAuth: B, showAuthUser: B,
   authUserLength: [0, 3, 8], showClaudeCodeVersion: B, showEffortLevel: B, effortFormat: ['full', 'symbol', 'text'],
   showPromptCache: B, showCacheHitRate: B, showSessionTokens: B, showOutputStyle: B, showMemoryUsage: B, showSpeed: B,
   showSessionStartDate: B, showLastResponseAt: B, showCompactions: B,
@@ -147,10 +203,12 @@ const DISPLAY = {
   providerName: ['', 'Prov', '  '], customLine: ['', 'custom | line 中文'], customLinePosition: ['first', 'last'],
   timeFormat: ['relative', 'absolute', 'both', 'elapsed', 'elapsedAndAbsolute'], hourCycle: ['auto', 'h11', 'h12', 'h23', 'h24'],
   showClockSeconds: B, showAdvisor: B, advisorOverride: ['', 'claude-sonnet-4-6'], autoCompactWindow: [null, 300000, 1.5],
-  mergeGroups: [undefined, [], [['context', 'usage']], [['tools', 'agents', 'todos']], [['project', 'context'], ['usage', 'promptCache', 'environment', 'cacheHitRate']]],
-  rightAlign: [[], ['usage'], ['todos', 'promptCache']],
+  mergeGroups: [undefined, [], [['context', 'usage']], [['tools', 'agents', 'todos']], [['project', 'context'], ['usage', 'promptCache', 'environment', 'cacheHitRate']],
+    [['context', 'sessionTokens']]],
+  rightAlign: [[], ['usage'], ['todos', 'promptCache'], ['sessionTokens']],
 };
-const ELEMENTS = ['project', 'addedDirs', 'context', 'usage', 'promptCache', 'cacheHitRate', 'memory', 'environment', 'tools', 'skills', 'mcp', 'agents', 'todos', 'sessionTime'];
+const ELEMENTS = ['project', 'addedDirs', 'context', 'usage', 'promptCache', 'cacheHitRate', 'memory', 'environment', 'tools', 'skills', 'mcp', 'agents', 'todos', 'sessionTime',
+  'sessionTokens'];
 
 // An external usage snapshot for the case: valid, stale, broken, or with model-scoped windows.
 function usageSnapshot(now) {
@@ -242,6 +300,7 @@ async function worker(k) {
     done++;
     const tp = path.join(sb.proj, `t${done}.jsonl`);
     fs.writeFileSync(tp, transcript());
+    subagents(tp);
     const now = clock + pick([-5000, 10000, 200000, 4000000]);
     const input = JSON.stringify(stdin(tp, sb.proj, now));
     const conf = config(sb, now);

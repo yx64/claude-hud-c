@@ -8,8 +8,8 @@
 # Sections, each a name for HUD_TEST_ONLY=cache/<Section>:
 #   lf crlf cr ls ps mixed  transcripts of cache/lines.jsonl ending their lines with \n, \r\n, \r,
 #                     U+2028, U+2029, or all five in turn, grown in place cut point by cut point: at
-#                     line ends, inside lines, right after a \r, inside a three-byte terminator. After
-#                     each step the saved state must sit right after the last complete line
+#                     line ends, inside lines, right after a \r, inside a three-byte terminator. Only a
+#                     \n ends a line; after each step the saved state must sit right after the last one
 #   invalidate        the file rewritten in its first bytes or just before the saved offset, replaced
 #                     by another file, cut shorter, the state file damaged or cut short: each must
 #                     parse from the start
@@ -17,9 +17,10 @@
 #                     file identity tells
 #   same-name         two transcripts with one file name, whose states share a name
 #   unsupported       an unsupported case in the saved part is still reported when resuming
-#   timeless          an agent's tool line without a time takes the clock of the refresh parsing it. A state
-#                     is saved past it all the same, and the clock moves on a minute every step: resuming
-#                     must give the agent the clock of the refresh resuming, as a full parse does
+#   timeless          an agent's tool line without a time takes the clock of the refresh parsing it, and a
+#                     state is saved past it all the same, holding that clock. The clock stays put here,
+#                     since a full parse takes the clock of its own refresh; test/compare/cache.mjs moves
+#                     it and holds resuming to upstream's
 cmake_minimum_required(VERSION 3.28)
 include(${CMAKE_CURRENT_LIST_DIR}/common.cmake)
 
@@ -95,15 +96,16 @@ function(build lines mode dst ends_var)
   set(${ends_var} "${ends}" PARENT_SCOPE)
 endfunction()
 
-# Where the saved state should be after a refresh of the first <Cut> bytes: right after the last line
-# that is complete, as parse_transcript decides it; a \r at the very end may still become \r\n.
+# Where the saved state should be after a refresh of the first <Cut> bytes: right after the last \n.
+# Of the terminators, \n is one byte that is not a lone \r, \r\n the only two-byte one.
 function(want_offset ends cut out)
   set(want 0)
   foreach(e IN LISTS ends)
     string(REPLACE "," ";" e "${e}")
     list(GET e 0 end)
+    list(GET e 1 l)
     list(GET e 2 lone)
-    if(end LESS cut OR (end EQUAL cut AND lone EQUAL 0))
+    if(NOT end GREATER cut AND ((l EQUAL 1 AND lone EQUAL 0) OR l EQUAL 2))
       set(want ${end})
     endif()
   endforeach()
@@ -165,26 +167,17 @@ endfunction()
 
 # Grows t/<Name>.jsonl in place from nothing to the bytes of <Full> through <Cuts>, the last one twice,
 # checking at each step. The saved state must sit right after the last complete line of what has been
-# written so far. Given a number of milliseconds as a further argument, the frozen clock moves on by that
-# much every step.
+# written so far.
 function(grow name full ends cuts)
-  set(tick 0)
-  if(ARGC GREATER 4)
-    set(tick ${ARGV4})
-  endif()
   set(tp ${dir}/t/${name}.jsonl)
   file(WRITE ${tp} "")
   set(at 0)
-  set(step 0)
   list(GET cuts -1 final)
   foreach(c IN LISTS cuts ITEMS ${final})
     if(c GREATER at)
       execute_process(COMMAND ${HUD_BYTES} append ${full} ${tp} ${at} ${c} COMMAND_ERROR_IS_FATAL ANY)
     endif()
     set(at ${c})
-    math(EXPR now "${HUD_NOW_MS} + ${step} * ${tick}")
-    set(ENV{HUD_FAKE_NOW_MS} ${now})
-    math(EXPR step "${step} + 1")
     check("${name}@${c}" ${tp})
     saved_offset(${dir}/state ${tp} got)
     want_offset("${ends}" ${c} want)
@@ -195,7 +188,6 @@ function(grow name full ends cuts)
       hud_fail("${name}@${c}" "saved offset ${got}, expected ${want} (empty: no state saved)")
     endif()
   endforeach()
-  set(ENV{HUD_FAKE_NOW_MS} ${HUD_NOW_MS})
 endfunction()
 
 # Every terminator's surroundings, from just before it to one byte past it, plus the end; every third.
@@ -378,7 +370,7 @@ if(sel)
   string(FIND "${t}" "${timeless_line}" start)
   math(EXPR a "${start} / 2")
   math(EXPR b "${start} + 10")
-  grow(timeless ${full} "${ends}" "${a};${b};${len}" 60000)
+  grow(timeless ${full} "${ends}" "${a};${b};${len}")
 endif()
 
 hud_finish()

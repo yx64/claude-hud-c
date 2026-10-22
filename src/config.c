@@ -103,7 +103,7 @@ static us usage_path(jv v, us home) {
 
 // In enum order; the asserts catch a name missing from either side.
 static const char *const EL_NAMES[] = {"project", "addedDirs", "context", "usage", "promptCache", "cacheHitRate", "memory",
-                                       "environment", "tools", "skills", "mcp", "agents", "todos", "sessionTime"};
+                                       "environment", "tools", "skills", "mcp", "agents", "todos", "sessionTime", "sessionTokens"};
 static const char *const SEG_NAMES[] = {"model", "project", "advisor", "sessionName", "version",
                                         "extra", "duration", "cost", "speed", "auth"};
 static_assert(countof(EL_NAMES) == EL_COUNT);
@@ -227,8 +227,10 @@ void load_config(Config *c, us claude_dir, us home) {
 
     jv eo = top("elementOrder");
     c->nelem = jis_arr(eo) ? names(eo, EL_NAMES, EL_COUNT, c->elem) : 0;
+    // sessionTokens is left out of the default, so the tokens summary keeps its own last line until placed.
     if (!c->nelem)
-        for (int i = 0; i < EL_COUNT; i++) c->elem[c->nelem++] = i;
+        for (int i = 0; i < EL_COUNT; i++)
+            if (i != EL_SESSION_TOKENS) c->elem[c->nelem++] = i;
     jv po = top("projectLineOrder");
     c->nplo = jis_arr(po) ? names(po, SEG_NAMES, SEG_COUNT, c->plo) : 0;
 
@@ -293,6 +295,7 @@ void load_config(Config *c, us claude_dir, us home) {
     B(show_cc_version, "showClaudeCodeVersion", false);
     B(show_effort, "showEffortLevel", false);
     d->effort_format = ONE_OF(get(display, "effortFormat"), ef, EF_FULL);
+    B(show_agent_effort, "showAgentEffort", false);
     B(show_memory, "showMemoryUsage", false);
     B(show_prompt_cache, "showPromptCache", false);
     B(show_cache_hit_rate, "showCacheHitRate", false);

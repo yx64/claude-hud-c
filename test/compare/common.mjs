@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 // The upstream version the port reproduces. Moving to another one is a deliberate step: change
 // this, run the comparison scripts against that version's source, and follow up on every difference.
-export const VERSION = '0.10.0';
+export const VERSION = '0.12.0';
 
 const runner = fileURLToPath(new URL('./run-upstream.mjs', import.meta.url));
 const fakeClock = fileURLToPath(new URL('./fakeclock.mjs', import.meta.url));
@@ -69,18 +69,21 @@ export const runReference = (ref, env, input) => ref.kind === 'exe'
   : run(process.execPath, ['--import', pathToFileURL(fakeClock).href, runner, ref.path], env, input);
 
 // The files a refresh may write, with their times: everything under <ConfigDir>/plugins/claude-hud
-// but the config, plus extra paths such as a usage snapshot.
+// but the config and upstream's transcript cursors, plus extra paths such as a usage snapshot. The
+// cursors are upstream's own parse cache; the port keeps its parse state elsewhere, in a form of its own.
+const UPSTREAM_CACHE = 'transcript-cursors';
 export function snapshot(cfgDir, extra = []) {
   const files = new Map();
+  const plugin = path.join(cfgDir, 'plugins', 'claude-hud');
   const walk = (d) => {
     if (!fs.existsSync(d)) return;
     for (const e of fs.readdirSync(d, { withFileTypes: true })) {
       const p = path.join(d, e.name);
-      if (e.isDirectory()) walk(p);
+      if (e.isDirectory() && !(d === plugin && e.name === UPSTREAM_CACHE)) walk(p);
       else if (e.isFile() && e.name !== 'config.json') files.set(p, null);
     }
   };
-  walk(path.join(cfgDir, 'plugins', 'claude-hud'));
+  walk(plugin);
   for (const p of extra) if (fs.existsSync(p)) files.set(p, null);
   for (const p of files.keys()) {
     const st = fs.statSync(p);

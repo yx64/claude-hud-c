@@ -592,10 +592,10 @@ static us provider_label(void) {
 
 // ---- effort.js ----
 
-static bool effort(us *level, us *symbol) {
-    jv e = sget("effort", nullptr);
-    us l;
-    if (!stdin_text(jget(e, "level"), 32, &l)) return false;
+// effortInfo on a string: a level from stdin or from a subagent's transcript, with its symbol
+static bool effort_info(us value, us *level, us *symbol) {
+    us l = us_slice(us_trim(sanitize_display(value)), 0, 32);
+    if (!l.n) return false;
     l = us_lower(l);
     static const char *const names[] = {"low", "medium", "high", "xhigh", "max"};
     static const us syms[] = {US_INIT("○"), US_INIT("◔"), US_INIT("◑"), US_INIT("◕"), US_INIT("●")};
@@ -609,8 +609,24 @@ static bool effort(us *level, us *symbol) {
                                         "__lookupgetter__", "__lookupsetter__"};
     for (size_t i = 0; i < countof(proto); i++)
         if (us_eq_c(l, proto[i])) UNSUPPORTED("effort level named like an Object.prototype member");
-    *level = C->t->ultracode ? CAT(US("ultracode("), l, US(")")) : l;
+    *level = l;
     return true;
+}
+
+// resolveEffortLevel: stdin reports ultracode as an ordinary level, so the transcript marker is what
+// distinguishes it.
+static bool effort(us *level, us *symbol) {
+    jv v = jget(sget("effort", nullptr), "level");
+    if (!jis_str(v) || !effort_info(jstr(v), level, symbol)) return false;
+    if (C->t->ultracode) *level = CAT(US("ultracode("), *level, US(")"));
+    return true;
+}
+
+// `◑ high`, `◑`, or `high`, per display.effortFormat
+static us format_effort(us level, us symbol) {
+    // The symbol alone can't carry the ultracode marker, so symbol mode keeps the full form.
+    if (CF->d.effort_format == EF_SYMBOL && symbol.n && !us_starts_c(level, "ultracode(")) return symbol;
+    return CF->d.effort_format == EF_TEXT || !symbol.n ? level : CAT(symbol, US(" "), level);
 }
 
 // ---- utils/hyperlinks.js: pathToFileURL(path.resolve(p)), then new URL() ----
@@ -643,9 +659,7 @@ static us hyperlink(us uri, us text) {
 static us effort_suffix(void) {
     us level, symbol;
     if (!CF->d.show_effort || !effort(&level, &symbol)) return US_EMPTY;
-    // The symbol alone can't carry the ultracode marker, so symbol mode keeps the full form.
-    if (CF->d.effort_format == EF_SYMBOL && symbol.n && !us_starts_c(level, "ultracode(")) return CAT(US(" "), symbol);
-    return CF->d.effort_format == EF_TEXT || !symbol.n ? CAT(US(" "), level) : CAT(US(" "), symbol, US(" "), level);
+    return CAT(US(" "), format_effort(level, symbol));
 }
 
 static us model_badge(void) {
@@ -1553,28 +1567,37 @@ static us agent_elapsed(Agent *a) {
     return CAT(num(floor(mins / 60)), US("h "), num(fmod(mins, 60)), US("m"));
 }
 
-// Up to three agents: running ones first, then those that finished in the last minute.
-static us agents_line(void) {
-    Transcript *tr = C->t;
-    Agent *shown[3], *run[16], *done[16];
+// Up to three agents: running ones first, then those that finished in the last minute. Agent ids are
+// unique keys of the parser's map, so the first-sighting filter has nothing to drop.
+int shown_agents(Transcript *tr, double now, Agent **shown) {
+    Agent *run[16], *done[16];
     int ns = 0, nr = 0, nd = 0;
     for (int i = 0; i < tr->nagents; i++) {
         Agent *a = &tr->agents[i];
         if (a->status == ST_RUNNING) run[nr++] = a;
-        else if (a->status == ST_COMPLETED && isfinite(a->end) && a->end <= C->now && C->now - a->end <= 60000) done[nd++] = a;
+        else if (a->status == ST_COMPLETED && isfinite(a->end) && a->end <= now && now - a->end <= 60000) done[nd++] = a;
     }
     for (int i = nr > 3 ? nr - 3 : 0; i < nr; i++) shown[ns++] = run[i];
     int slots = 3 - ns < 2 ? 3 - ns : 2;
     for (int i = nd > slots ? nd - slots : 0; i < nd && slots > 0; i++) shown[ns++] = done[i];
+    return ns;
+}
+
+static us agents_line(void) {
+    Agent *shown[3];
+    int ns = shown_agents(C->t, C->now, shown);
     us lines[3];
     for (int i = 0; i < ns; i++) {
         Agent *a = shown[i];
         us icon = a->status == ST_RUNNING ? yellow(US("◐")) : green(US("✓"));
         us type = truncate_string(us_trim(sanitize_display(a->type)), 24);
-        us model;
-        bool hm = a->model.n && short_model(a->model, &model);
+        // [model effort], either one alone, or nothing
+        us badge[2], level, symbol;
+        int nb = 0;
+        if (a->model.n && short_model(a->model, &badge[nb])) nb++;
+        if (CF->d.show_agent_effort && a->effort.n && effort_info(a->effort, &level, &symbol)) badge[nb++] = format_effort(level, symbol);
         us desc = truncate_string(us_trim(sanitize_display(a->desc)), 40);
-        lines[i] = CAT(icon, US(" "), magenta(type.n ? type : US("agent")), hm ? CAT(US(" "), label(CAT(US("["), model, US("]")))) : US_EMPTY,
+        lines[i] = CAT(icon, US(" "), magenta(type.n ? type : US("agent")), nb ? CAT(US(" "), label(CAT(US("["), join(badge, nb, US(" ")), US("]")))) : US_EMPTY,
                        desc.n ? label(CAT(US(": "), desc)) : US_EMPTY, US(" "), label(CAT(US("("), agent_elapsed(a), US(")"))));
     }
     return join(lines, ns, US("\n"));
@@ -1651,6 +1674,7 @@ static us element_line(int el, Align a) {
     case EL_MEMORY: return memory_line(a);
     case EL_ENVIRONMENT: return environment_line();
     case EL_SESSION_TIME: return session_time_line();
+    case EL_SESSION_TOKENS: return CF->d.show_session_tokens ? session_tokens_summary(t(T_TOKENS)) : US_EMPTY;
     }
     return activity_line(el);
 }
@@ -1732,8 +1756,9 @@ static int expanded_lines(us *lines) {
     for (int i = 0; i < nr; i++) lines[n++] = rows[i].line;
     us gf = git_files_line();
     if (gf.n) lines[n++] = gf;
-    if (CF->d.show_session_tokens) {
-        us st = session_tokens_summary(t(T_TOKENS));
+    // Until sessionTokens is placed in elementOrder, the summary keeps its own last line.
+    if (!in_order[EL_SESSION_TOKENS]) {
+        us st = element_line(EL_SESSION_TOKENS, (Align){0});
         if (st.n) lines[n++] = st;
     }
     us cp = compactions_part();

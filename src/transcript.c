@@ -10,6 +10,8 @@
 
 #include "transcript-state.h"
 
+enum { TOOLS_KEPT = 20, AGENTS_KEPT = 10, TOOLS_TRACKED = 256 };
+
 // ---- ordered map ----
 
 static uint32_t hash_bytes(const char *k, uint32_t n) {
@@ -336,6 +338,18 @@ static void tool_use(Parser *s, jv block, double at) {
             en->i = s->agentv.n;
             VPUSH(s->agentv, a);
         } else s->agentv.p[en->i] = a;
+        if (s->agents.alive > AGENTS_KEPT) {
+            om_del(&s->agents, om_oldest(&s->agents));
+            // Completions and launch ids only matter for agents still tracked.
+            for (int32_t i = 0; i < s->completions.n; i++) {
+                om_ent *c = &s->completions.e[i];
+                if (c->alive && !om_get(&s->agents, c->k, c->kn)) om_del(&s->completions, c);
+            }
+            for (int32_t i = 0; i < s->agent_ids.n; i++) {
+                om_ent *c = &s->agent_ids.e[i];
+                if (c->alive && !s->agents.e[c->i].alive) om_del(&s->agent_ids, c);
+            }
+        }
     } else if (jstr_eq(name, "TodoWrite")) {
         jv todos = jget(input, "todos");
         if (!jis_arr(todos)) return;
@@ -382,6 +396,8 @@ static void tool_use(Parser *s, jv block, double at) {
             en->i = s->toolv.n;
             VPUSH(s->toolv, tool);
         } else s->toolv.p[en->i] = tool;
+        // Tracked beyond those shown, so an MCP call's late error still counts, but bounded.
+        if (s->tools.alive > TOOLS_TRACKED) om_del(&s->tools, om_oldest(&s->tools));
     }
 }
 
@@ -410,6 +426,14 @@ static void tool_result(Parser *s, jv block, jv entry, double at) {
     if (ae) {
         Agent *a = &s->agentv.p[ae->i];
         jv tur = jget(entry, "toolUseResult");
+        jv agent_id = jget(tur, "agentId");
+        if (jis_str(agent_id) && yyjson_get_len(agent_id)) {
+            a->agent_id = jstr(agent_id);
+            const char *ik;
+            uint32_t ikn;
+            str_key(a->agent_id, &ik, &ikn);
+            om_put(&s->agent_ids, ik, ikn, nullptr)->i = (int32_t)(ae - s->agents.e);
+        }
         us m;
         if (sanitize_model(jget(tur, "resolvedModel"), &m)) a->model = m;
         if (jis_true(jget(tur, "isAsync")) || jstr_eq(jget(tur, "status"), "async_launched")) a->background = true;
@@ -432,7 +456,10 @@ static void assistant(Parser *s, jv e, double at) {
     }
     double u[4] = {count(jget(raw, "input_tokens")), count(jget(raw, "output_tokens")),
                    count(jget(raw, "cache_creation_input_tokens")), count(jget(raw, "cache_read_input_tokens"))};
-    if (!jis_true(jget(e, "isSidechain"))) r->context_tokens = u[0] + u[2] + u[3];
+    // A main-conversation request always sends some context, so zero is a placeholder: gateways that write
+    // one record per content block give thinking blocks all-zero usage. The last real size stays.
+    double context = u[0] + u[2] + u[3];
+    if (!jis_true(jget(e, "isSidechain")) && context > 0) r->context_tokens = context;
     jv id = jget(msg, "id");
     if (jis_str(id) && yyjson_get_len(id) && u16len(id) <= 128) {
         s->has_idless = false;
@@ -457,19 +484,10 @@ static void assistant(Parser *s, jv e, double at) {
     s->has_idless = true;
 }
 
-// A tool line without a time takes the clock of the refresh parsing it, the one the rest of the refresh reads
-// too, the same for every such line. Upstream takes the time per line as it parses and renders against a
-// clock read after the parse, so an agent finished on such a line always shows as just finished; one clock
-// shows it the same, and the same as upstream with its clock frozen. The time is kept as NOW and made the
-// clock once the parse is done, so a state saved past such a line holds no clock: resuming from it gives what
-// a full parse at the clock of the refresh resuming gives. Only an agent keeps the time (tool_use,
-// tool_result), and only !isnan looks at it before then, for which NOW is a time like any other. No timestamp
-// parses to an infinity.
-static constexpr double NOW = -__builtin_inf();
-
-static double line_time(double at) { return isnan(at) ? NOW : at; }
-
-static void on_line(Parser *s, jv e) {
+// A tool line without a time takes the clock of the refresh that parses it, the one the rest of the refresh
+// reads too. Upstream takes the time per line as it parses, and keeps it in the state it saves, as this
+// parser's saved state keeps it: a refresh resuming past such a line shows the time of the refresh that read it.
+static void on_line(Parser *s, jv e, double now) {
     Transcript *r = s->r;
     if (!e || !(yyjson_is_obj(e) || yyjson_is_arr(e))) {
         s->has_idless = false;
@@ -507,55 +525,93 @@ static void on_line(Parser *s, jv e) {
         double d = jnum(post);
         r->context_tokens = jis_num(post) && isfinite(d) && d >= 0 ? trunc(d) : 0;
     }
-    // A background agent's tool_result lands at launch; its completion is this enqueue.
-    jv qc = jget(e, "content");
-    if (jstr_eq(type, "queue-operation") && jstr_eq(jget(e, "operation"), "enqueue") && jis_str(qc) && !isnan(at)) {
-        const char *c = yyjson_get_str(qc), *task, *tool;
-        size_t n = yyjson_get_len(qc), taskn, tooln;
-        if (tag_match(c, n, "<tool-use-id>", "</tool-use-id>", &tool, &tooln) && tag_match(c, n, "<task-id>", "</task-id>", &task, &taskn)) {
-            const char *k;
-            uint32_t kn;
-            str_key(us_utf8(tool, tooln), &k, &kn);
-            om_put(&s->completions, k, kn, nullptr)->d[0] = at;
+    // A background agent's tool_result lands at launch; its completion is this enqueue, or (forked and
+    // resumed sessions) a queued_command attachment carrying the same notice.
+    jv notice = nullptr;
+    if (jstr_eq(type, "queue-operation") && jstr_eq(jget(e, "operation"), "enqueue")) notice = jget(e, "content");
+    else if (jstr_eq(type, "attachment") && jstr_eq(jget(jget(e, "attachment"), "type"), "queued_command")) notice = jget(jget(e, "attachment"), "prompt");
+    if (jis_str(notice) && !isnan(at)) {
+        const char *c = yyjson_get_str(notice), *task, *tool;
+        size_t n = yyjson_get_len(notice), taskn, tooln;
+        bool has_task = tag_match(c, n, "<task-id>", "</task-id>", &task, &taskn);
+        const char *k = nullptr;
+        uint32_t kn = 0;
+        // Some notices carry only <task-id>, the agentId of the launch's tool_result.
+        if (tag_match(c, n, "<tool-use-id>", "</tool-use-id>", &tool, &tooln)) str_key(us_utf8(tool, tooln), &k, &kn);
+        else if (has_task) {
+            const char *tk;
+            uint32_t tkn;
+            str_key(us_utf8(task, taskn), &tk, &tkn);
+            om_ent *id = om_get(&s->agent_ids, tk, tkn);
+            if (id) k = s->agents.e[id->i].k, kn = s->agents.e[id->i].kn;
+        }
+        // Both carriers can log the same notice; the earliest is when the agent finished. Background Bash
+        // and Monitor tasks send the same notice; only agents' are kept.
+        if (k && has_task && om_get(&s->agents, k, kn)) {
+            om_ent *prev = om_get(&s->completions, k, kn);
+            if (!prev || at < prev->d[0]) om_put(&s->completions, k, kn, nullptr)->d[0] = at;
         }
     }
     if (jis_arr(content)) {
+        double t = isnan(at) ? now : at;
         size_t idx, max;
         jv block;
         yyjson_arr_foreach(content, idx, max, block) {
             jv bt = jget(block, "type");
-            if (jstr_eq(bt, "tool_use") && jtruthy(jget(block, "id")) && jtruthy(jget(block, "name"))) tool_use(s, block, line_time(at));
-            if (jstr_eq(bt, "tool_result") && jtruthy(jget(block, "tool_use_id"))) tool_result(s, block, e, line_time(at));
+            if (jstr_eq(bt, "tool_use") && jtruthy(jget(block, "id")) && jtruthy(jget(block, "name"))) tool_use(s, block, t);
+            if (jstr_eq(bt, "tool_result") && jtruthy(jget(block, "tool_use_id"))) tool_result(s, block, e, t);
         }
     }
 }
 
-// The first \n, \r or 0xE2 byte at or after i, else n: where a line may end. Sixteen bytes per
-// step; the byte-by-byte scan was a fifth of the whole parse.
+// The first \n at or after i, else n: where a line ends. Sixteen bytes per step; the byte-by-byte scan
+// was a fifth of the whole parse.
 static size_t line_stop(const char *s, size_t i, size_t n) {
 #if defined(__SSE2__)
-    const __m128i nl = _mm_set1_epi8('\n'), cr = _mm_set1_epi8('\r'), e2 = _mm_set1_epi8((char)0xE2);
+    const __m128i nl = _mm_set1_epi8('\n');
     for (; i + 16 <= n; i += 16) {
-        __m128i v = _mm_loadu_si128((const __m128i *)(s + i));
-        unsigned m = (unsigned)_mm_movemask_epi8(_mm_or_si128(_mm_or_si128(_mm_cmpeq_epi8(v, nl), _mm_cmpeq_epi8(v, cr)), _mm_cmpeq_epi8(v, e2)));
+        unsigned m = (unsigned)_mm_movemask_epi8(_mm_cmpeq_epi8(_mm_loadu_si128((const __m128i *)(s + i)), nl));
         if (m) return i + (size_t)__builtin_ctz(m);
     }
 #elif defined(__ARM_NEON) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
     // NEON has no movemask: narrowing each 16-bit lane by a 4-bit shift leaves four mask bits per
     // byte, in byte order, in one 64-bit lane.
-    const uint8x16_t nl = vdupq_n_u8('\n'), cr = vdupq_n_u8('\r'), e2 = vdupq_n_u8(0xE2);
+    const uint8x16_t nl = vdupq_n_u8('\n');
     for (; i + 16 <= n; i += 16) {
-        uint8x16_t v = vld1q_u8((const uint8_t *)(s + i));
-        uint8x16_t eq = vorrq_u8(vorrq_u8(vceqq_u8(v, nl), vceqq_u8(v, cr)), vceqq_u8(v, e2));
+        uint8x16_t eq = vceqq_u8(vld1q_u8((const uint8_t *)(s + i)), nl);
         uint64_t m = vget_lane_u64(vreinterpret_u64_u8(vshrn_n_u16(vreinterpretq_u16_u8(eq), 4)), 0);
         if (m) return i + (size_t)(__builtin_ctzll(m) >> 2);
     }
 #endif
-    while (i < n && s[i] != '\n' && s[i] != '\r' && (uint8_t)s[i] != 0xE2) i++;
+    while (i < n && s[i] != '\n') i++;
     return i;
 }
 
-// How many bytes at the end of the file readline never sees: its StringDecoder holds back the
+// readline's line end at or after i, else n: \n, \r, \r\n, U+2028 or U+2029 (E2 80 A8 / E2 80 A9), its
+// length in *term. A \r or a lead byte E2 among the last bytes read is undecided until more follow, or
+// the file ends (eof): n until then.
+static size_t readline_stop(const char *s, size_t i, size_t n, bool eof, size_t *term) {
+    for (; i < n; i++) {
+        uint8_t c = (uint8_t)s[i];
+        *term = 1;
+        if (c == '\n') return i;
+        if (c == '\r') {
+            if (i + 1 == n && !eof) return n;
+            if (i + 1 < n && s[i + 1] == '\n') *term = 2;
+            return i;
+        }
+        if (c != 0xE2) continue;
+        if (i + 2 >= n) {
+            if (!eof) return n;
+        } else if ((uint8_t)s[i + 1] == 0x80 && ((uint8_t)s[i + 2] == 0xA8 || (uint8_t)s[i + 2] == 0xA9)) {
+            *term = 3;
+            return i;
+        }
+    }
+    return n;
+}
+
+// How many bytes at the end of a file readline never sees: its StringDecoder holds back the
 // start of a character that is not complete yet and is never flushed at the end of the stream, so
 // a last line cut inside a multi-byte character, U+2028 included, parses without those bytes.
 // string_decoder's utf8CheckIncomplete, as it judges lead and continuation bytes: up to three
@@ -605,26 +661,20 @@ void parse_transcript(us path, double now, Transcript *r) {
     size_t poolcap = 0;
     void *pool = nullptr;
     bool kept = false, saved = false;
+    // Upstream reads the file by bytes and ends a line at \n alone; a \r before it stays in the line, where
+    // JSON.parse takes it for white space. Each line is decoded on its own, a character cut at the end of the
+    // file included.
     for (size_t i = 0;;) {
-        // readline ends a line at \n, \r, \r\n, U+2028 and U+2029 (E2 80 A8 / E2 80 A9).
-        size_t j = i < n ? line_stop(buf, i, n) : n, term = 1;
-        while (j < n && (uint8_t)buf[j] == 0xE2) {
-            if (j + 2 < n && (uint8_t)buf[j + 1] == 0x80 && ((uint8_t)buf[j + 2] == 0xA8 || (uint8_t)buf[j + 2] == 0xA9)) {
-                term = 3;
-                break;
-            }
-            j = line_stop(buf, j + 1, n);
-        }
-        // The state is kept before the first line that is not complete: one still being written,
-        // or one ended by a \r that a \n yet to come would join. Only the last line can be either.
-        if (!kept && (i == n || j == n || (buf[j] == '\r' && j + 1 == n))) {
+        size_t j = i < n ? line_stop(buf, i, n) : n;
+        // The state is kept before the first line that is not complete, the last one, still being written:
+        // it counts for this refresh and is read again by the next.
+        if (!kept && j == n) {
             uint64_t off = start + i;
             kept = true;
             if (off && !(resumed && off == start)) saved = state_save(&tf, &slot, off, buf, start, n, &s);
         }
         if (i == n) break;
         size_t len = j - i;
-        if (j == n) len -= held_tail(buf + i, len);
         size_t need = yyjson_read_max_memory_usage(len, flg);
         if (need > poolcap) {
             free(pool);
@@ -645,10 +695,9 @@ void parse_transcript(us path, double now, Transcript *r) {
             }
         }
         // Everything kept from a line is copied out of the pool, so the next line may reuse it.
-        on_line(&s, doc ? yyjson_doc_get_root(doc) : nullptr);
+        on_line(&s, doc ? yyjson_doc_get_root(doc) : nullptr, now);
         free(fixed);
-        if (j < n && buf[j] == '\r' && j + 1 < n && buf[j + 1] == '\n') j++;
-        i = j < n ? j + term : n;
+        i = j < n ? j + 1 : n;
     }
     free(pool);
     free(buf);
@@ -660,19 +709,20 @@ void parse_transcript(us path, double now, Transcript *r) {
     (void)saved;
     for (int32_t i = 0; i < s.completions.n; i++) {
         om_ent *q = &s.completions.e[i];
-        om_ent *ae = om_get(&s.agents, q->k, q->kn);
+        om_ent *ae = q->alive ? om_get(&s.agents, q->k, q->kn) : nullptr;
         if (ae && s.agentv.p[ae->i].background) s.agentv.p[ae->i].end = q->d[0];
     }
-    for (int32_t i = 0; i < s.agentv.n; i++)
-        if (!isnan(s.agentv.p[i].end)) s.agentv.p[i].status = ST_COMPLETED;
-
-    r->tools = arena_alloc(sizeof(Tool) * 20);
-    for (int32_t i = s.toolv.n > 20 ? s.toolv.n - 20 : 0; i < s.toolv.n; i++) r->tools[r->ntools++] = s.toolv.p[i];
-    r->agents = arena_alloc(sizeof(Agent) * 10);
-    for (int32_t i = s.agentv.n > 10 ? s.agentv.n - 10 : 0; i < s.agentv.n; i++) {
-        Agent a = s.agentv.p[i];
-        if (a.start == NOW) a.start = now;
-        if (a.end == NOW) a.end = now;
+    // The maps' entries in order, those deleted skipped: the last TOOLS_KEPT tools, every agent tracked.
+    int32_t from = s.tools.n;
+    for (int k = 0; from > 0 && k < TOOLS_KEPT;) k += s.tools.e[--from].alive;
+    r->tools = arena_alloc(sizeof(Tool) * TOOLS_KEPT);
+    for (int32_t i = from; i < s.tools.n; i++)
+        if (s.tools.e[i].alive) r->tools[r->ntools++] = s.toolv.p[s.tools.e[i].i];
+    r->agents = arena_alloc(sizeof(Agent) * AGENTS_KEPT);
+    for (int32_t i = 0; i < s.agents.n; i++) {
+        if (!s.agents.e[i].alive) continue;
+        Agent a = s.agentv.p[s.agents.e[i].i];
+        if (!isnan(a.end)) a.status = ST_COMPLETED;
         r->agents[r->nagents++] = a;
     }
     r->skills = s.skillv.p, r->nskills = s.skillv.n;
@@ -687,4 +737,65 @@ void parse_transcript(us path, double now, Transcript *r) {
         if (s.usage.e[i].alive)
             for (int k = 0; k < 4; k++) tot[k] += s.usage.e[i].d[k];
     r->tok_in = tot[0], r->tok_out = tot[1], r->tok_cc = tot[2], r->tok_cr = tot[3];
+}
+// ---- addSubagentEfforts ----
+
+us subagent_effort(us path, us agent_id) {
+    // The id comes from the transcript and names a file, so only a plain token is used: /^[\w-]{1,64}$/.
+    if (!agent_id.n || agent_id.n > 64) return US_EMPTY;
+    for (int32_t i = 0; i < agent_id.n; i++) {
+        uint16_t c = agent_id.p[i];
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-')) return US_EMPTY;
+    }
+    // <session>/subagents/agent-<id>.jsonl beside <session>.jsonl. path.basename(p, '.jsonl') keeps a
+    // name that is only the extension, unless the path is nothing else.
+    us full = path_resolve(path);
+    int32_t b = full.n;
+    while (b > 0 && !is_sep(full.p[b - 1])) b--;
+    us name = us_slice(full, b, full.n);
+    if (us_eq_c(path, ".jsonl")) name = US_EMPTY;
+    else if (name.n > 6 && us_ends_c(name, ".jsonl")) name.n -= 6;
+    us file = path_join(dir_of(full), name, US("subagents"), us_cat(US("agent-"), agent_id, US(".jsonl")));
+    // Checked before opening, which would block on a pipe.
+    fstat_t st = stat_path(file);
+    if (!st.ok || !st.is_file) return US_EMPTY;
+    void *h = open_read(file);
+    uint64_t size;
+    if (!h) return US_EMPTY;
+    if (!os_size(h, &size)) {
+        os_close(h);
+        return US_EMPTY;
+    }
+    // readline over a stream, so the scan stops at the first reply: read on only while no line has one.
+    us effort = US_EMPTY;
+    char *buf = nullptr;
+    size_t n = 0, cap = 0, i = 0;
+    uint64_t at = 0;
+    for (bool found = false; !found;) {
+        bool eof = at == size;
+        size_t term, j = readline_stop(buf, i, n, eof, &term);
+        if (j == n && !eof) {
+            uint32_t want = (uint32_t)(size - at < 65536 ? size - at : 65536);
+            if (n + want > cap) {
+                cap = (n + want) * 2;
+                buf = xrealloc(buf, cap);
+            }
+            if (!read_at(h, at, buf + n, want)) break;  // gone mid-read
+            n += want, at += want;
+            continue;
+        }
+        size_t len = j - i;
+        if (j == n && len) len -= held_tail(buf + i, len);
+        jv e = len ? parse_json(buf + i, len) : nullptr;
+        if (e && yyjson_is_obj(e) && jstr_eq(jget(e, "type"), "assistant")) {
+            jv v = jget(e, "effort");
+            if (jis_str(v)) effort = jstr(v);
+            found = true;
+        }
+        if (j == n) break;
+        i = j + term;
+    }
+    free(buf);
+    os_close(h);
+    return effort;
 }
