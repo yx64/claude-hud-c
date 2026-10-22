@@ -768,14 +768,18 @@ us subagent_effort(us path, us agent_id) {
         return US_EMPTY;
     }
     // readline over a stream, so the scan stops at the first reply: read on only while no line has one.
+    // Before reading on, the lines already scanned are dropped, and the scan resumes where it stopped:
+    // only the last two bytes can be undecided, so a long line is not scanned again from its start.
     us effort = US_EMPTY;
     char *buf = nullptr;
-    size_t n = 0, cap = 0, i = 0;
+    size_t n = 0, cap = 0, i = 0, from = 0;
     uint64_t at = 0;
     for (bool found = false; !found;) {
         bool eof = at == size;
-        size_t term, j = readline_stop(buf, i, n, eof, &term);
+        size_t term, j = readline_stop(buf, from, n, eof, &term);
         if (j == n && !eof) {
+            if (i) memmove(buf, buf + i, n - i), n -= i, i = 0;
+            from = n > 2 ? n - 2 : 0;
             uint32_t want = (uint32_t)(size - at < 65536 ? size - at : 65536);
             if (n + want > cap) {
                 cap = (n + want) * 2;
@@ -794,7 +798,7 @@ us subagent_effort(us path, us agent_id) {
             found = true;
         }
         if (j == n) break;
-        i = j + term;
+        i = from = j + term;
     }
     free(buf);
     os_close(h);
