@@ -7,7 +7,11 @@
 
 // ---- git-runner.js ----
 
-static const char *const GIT_ENV[] = {"GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0", "GCM_INTERACTIVE=Never", nullptr};
+// GIT_NO_LAZY_FETCH: a partial clone fetches a missing object through the remote its own config names,
+// with that config's core.sshCommand or uploadpack, so a repository could still run a command of its own;
+// a status that needs such an object fails instead. Upstream fetches. Git older than 2.44 ignores it.
+static const char *const GIT_ENV[] = {"GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0", "GCM_INTERACTIVE=Never", "GIT_NO_LAZY_FETCH=1",
+                                      nullptr};
 
 static int run_git(us git, us cwd, const char *const *args, uint32_t timeout, us *out) {
     return os_run(git, args, cwd, GIT_ENV, timeout + OS_GIT_EXTRA_MS, 1024 * 1024, out);
@@ -120,7 +124,17 @@ static bool parse_digits(us s, double *v) {  // Number.parseInt(s, 10) for git's
 // cannot take back in -c makes git refuse to run.
 typedef struct { const char **p; int n; } Args;
 
-static Args safe_args(us git, us cwd) {
+// Whether the name, back in UTF-8, is the bytes git read. Bytes that are not UTF-8 came through as U+FFFD,
+// and a surrogate encoded on its own comes back in another form; a character outside the BMP may be
+// either, so it is refused as well. -c could not name such a driver, which would then still run.
+static bool sendable(us name) {
+    for (int32_t i = 0; i < name.n; i++)
+        if (name.p[i] == 0xFFFD || (name.p[i] >= 0xD800 && name.p[i] <= 0xDFFF)) return false;
+    return true;
+}
+
+// False when a driver cannot be turned off: git is then not run at all, where upstream runs it.
+static bool safe_args(us git, us cwd, Args *safe) {
     us out, *f;
     int nf = 0;
     // exits 1 when no filter is configured
@@ -138,7 +152,12 @@ static Args safe_args(us git, us cwd) {
         us name = dot > 7 ? us_slice(key, 7, dot) : US_EMPTY;  // filter.<name>.<key>
         bool seen = !name.n;
         for (int k = 0; k < nn && !seen; k++) seen = us_eq(names[k], name);
-        if (!seen) names[nn++] = name;
+        if (seen) continue;
+        if (!sendable(name)) {
+            UNSUPPORTED("filter driver from the repository's config whose name is not UTF-8");
+            return false;
+        }
+        names[nn++] = name;
     }
     static const char *const head[] = {QUIET, "-c", "core.fsmonitor=false"};
     static const char *const keys[] = {"clean=", "process=", "required=false"};
@@ -150,7 +169,8 @@ static Args safe_args(us git, us cwd) {
             a.p[a.n++] = "-c";
             a.p[a.n++] = us_to_utf8(us_cat(US("filter."), names[k], US("."), us_c(keys[j])), &len);
         }
-    return a;
+    *safe = a;
+    return true;
 }
 
 // safe, then tail (null-terminated)
@@ -166,7 +186,8 @@ static const char *const *with(Args safe, const char *const *tail) {
 VcsStatus *git_status(us cwd, jv repo, bool line_diffs) {
     us git, out;
     if (!os_find_git(&git)) return nullptr;
-    Args safe = safe_args(git, cwd);
+    Args safe;
+    if (!safe_args(git, cwd, &safe)) return nullptr;
     // Uncommitted changes inside a submodule do not make the repository dirty, and git inside one reads its config.
     int r = run_git(git, cwd, with(safe, (const char *const[]){"status", "--porcelain=v2", "--branch", "-z", "--ignore-submodules=dirty", nullptr}), 1000, &out);
     VcsStatus *st = arena_alloc(sizeof *st);
