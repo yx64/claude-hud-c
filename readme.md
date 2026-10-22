@@ -71,11 +71,12 @@ Known gaps, where claude-hud-c renders English or an approximation instead:
   zh-CN, or a Windows path that is not drive-absolute. The source marks each one `UNSUPPORTED("<Reason>")`;
 - inputs that only crafted data or rare setups produce, such as times before 1970, more than 256 skills, or JSON
   keys repeated within an object, where matching upstream would take more code than the case is worth. The order of
-  git's changed files may also differ when some of them no longer exist; their content does not;
-- two ways a repository's own config still has claude-hud's git calls run a command it names: a filter driver whose
-  name is not UTF-8, which `-c` cannot turn off, and a partial clone fetching a missing object. claude-hud-c runs
-  no git at all for the first (`UNSUPPORTED`), and sets `GIT_NO_LAZY_FETCH`, so a status that needs such an object
-  fails instead of fetching it.
+  git's changed files may also differ when some of them no longer exist; their content does not.
+
+One deliberate difference: in two cases claude-hud's git calls still run a command that a repository's own config
+names, and claude-hud-c's do not. A filter driver from that config whose name is not UTF-8 cannot be turned off with
+`-c`, so claude-hud-c runs no git at all there (`UNSUPPORTED`); and it sets `GIT_NO_LAZY_FETCH`, so a status that
+needs an object a partial clone is missing fails instead of fetching it through the repository's remote.
 
 Two additions: the run time of each refresh at the end of the last line, and a parse-state file per transcript (next
 section).

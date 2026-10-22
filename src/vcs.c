@@ -120,8 +120,8 @@ static bool parse_digits(us s, double *v) {  // Number.parseInt(s, 10) for git's
 
 // QUIET, then what keeps git from running commands a repository's own config names: core.fsmonitor on
 // every status, and filter drivers whenever git hashes a changed file. Both are turned off for drivers
-// that do not come from the user's global or system config, so git-lfs keeps working; a driver name git
-// cannot take back in -c makes git refuse to run.
+// that do not come from the user's global or system config, so git-lfs keeps working. A name -c cannot hold
+// at all makes git refuse to run; one that would reach git as another name is caught first (sendable).
 typedef struct { const char **p; int n; } Args;
 
 // Whether the name, back in UTF-8, is the bytes git read. Bytes that are not UTF-8 came through as U+FFFD,
