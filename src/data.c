@@ -439,12 +439,28 @@ static void local_date_key(double ms, char out[16]) {
     *put_int(p, lt.d, 2) = 0;
 }
 
-void cost_totals(Ctx *ctx) {
+// Renders run in separate processes that share one ledger. The rename keeps the file whole, but two
+// overlapping read-modify-write cycles still drop the earlier writer's changes, a whole new session and
+// its baseline included; a lock file makes each cycle run alone. An update takes a few milliseconds, so a
+// lock older than two seconds belongs to a crashed process. The clock here is the real one, not the
+// refresh's. Without the lock, after half a second or when it cannot be made, the update goes ahead.
+static bool ledger_lock(us lock) {
+    double deadline = os_now_ms() + 500;
+    for (;;) {
+        int r = os_lock_file(lock);
+        if (r != LOCK_HELD) return r == LOCK_TAKEN;
+        fstat_t st = stat_path(lock);
+        if (st.ok && os_now_ms() - st.mtime_ms > 2000) os_remove(lock);
+        if (os_now_ms() >= deadline) return false;
+        os_sleep_ms(10);
+    }
+}
+
+static void update_ledger(Ctx *ctx, us path) {
     const double DAY = 86400000.0, WEEK = 7 * DAY;
     double now = ctx->now;
     char today[16];
     local_date_key(now, today);
-    us path = path_join(ctx->claude_dir, US("plugins"), US("claude-hud"), US("daily-cost.json"));
     Session *e = arena_alloc(sizeof(Session) * MAX_SESSIONS);
     int n = 0;
     double week_start = now, carry = 0;
@@ -561,6 +577,14 @@ void cost_totals(Ctx *ctx) {
     for (int i = 0; i < n; i++) week_usd += fmax(0, e[i].total - e[i].week_baseline);
     ctx->has_costs = true, ctx->today = today_usd;
     ctx->has_week = has_window, ctx->week = carry + week_usd;
+}
+
+void cost_totals(Ctx *ctx) {
+    us path = path_join(ctx->claude_dir, US("plugins"), US("claude-hud"), US("daily-cost.json"));
+    us lock = us_cat(path, US(".lock"));
+    bool held = ledger_lock(lock);
+    update_ledger(ctx, path);
+    if (held) os_remove(lock);
 }
 
 // ---- memory.js ----

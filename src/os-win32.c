@@ -357,6 +357,22 @@ static void ensure_dir(us dir) {
 
 void os_mkdir(us dir) { CreateDirectoryW(wz(dir), nullptr); }
 
+int os_lock_file(us path) {
+    const wchar_t *w = wz(path);
+    HANDLE h = CreateFileW(w, GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE && GetLastError() == ERROR_PATH_NOT_FOUND) {
+        ensure_dir(dir_of(path));
+        h = CreateFileW(w, GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    }
+    if (h == INVALID_HANDLE_VALUE) return GetLastError() == ERROR_FILE_EXISTS ? LOCK_HELD : LOCK_FAILED;
+    CloseHandle(h);
+    return LOCK_TAKEN;
+}
+
+void os_remove(us path) { DeleteFileW(wz(path)); }
+
+void os_sleep_ms(uint32_t ms) { Sleep(ms); }
+
 static void stamp(HANDLE h, double ms) {
     uint64_t v = (uint64_t)(int64_t)(ms * 10000) + 116444736000000000ULL;
     FILETIME ft = {(DWORD)v, (DWORD)(v >> 32)};

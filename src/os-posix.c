@@ -390,6 +390,22 @@ static void ensure_dir(us dir) {
 
 void os_mkdir(us dir) { mkdir(u8(dir), 0777); }
 
+int os_lock_file(us path) {
+    const char *f = u8(path);
+    int fd = open(f, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+    if (fd < 0 && errno == ENOENT) {
+        ensure_dir(dir_of(path));
+        fd = open(f, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+    }
+    if (fd < 0) return errno == EEXIST ? LOCK_HELD : LOCK_FAILED;
+    close(fd);
+    return LOCK_TAKEN;
+}
+
+void os_remove(us path) { unlink(u8(path)); }
+
+void os_sleep_ms(uint32_t ms) { nanosleep(&(struct timespec){ms / 1000, (long)(ms % 1000) * 1000000}, nullptr); }
+
 // Readable by the owner only, as upstream writes the ledger, the speed cache and the usage snapshot.
 bool write_bytes(us path, const void *p, size_t n, double mtime, int mode) {
     const char *f = u8(path);

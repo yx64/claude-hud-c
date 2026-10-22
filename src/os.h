@@ -58,6 +58,11 @@ bool write_bytes(us path, const void *p, size_t n, double mtime, int mode);
 bool os_rename(us from, us to);  // replacing the target
 bool os_append(us path, const void *p, size_t n);
 void os_mkdir(us dir);
+// A lock file made only when there is none, readable by the owner only, its directory made when missing.
+enum { LOCK_TAKEN, LOCK_HELD, LOCK_FAILED };
+int os_lock_file(us path);
+void os_remove(us path);  // fs.rmSync(path, { force: true }) for a file
+void os_sleep_ms(uint32_t ms);
 us os_exe_dir(void);
 
 // ---- paths: node's path module on this platform ----
