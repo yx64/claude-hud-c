@@ -552,7 +552,8 @@ static void on_line(Parser *s, jv e, double now) {
             if (!prev || at < prev->d[0]) om_put(&s->completions, k, kn, nullptr)->d[0] = at;
         }
     }
-    if (jis_arr(content)) {
+    // Only real turns carry activity: an api-request-blob line replays the blocks of earlier ones.
+    if ((jstr_eq(type, "user") || jstr_eq(type, "assistant")) && jis_arr(content)) {
         double t = isnan(at) ? now : at;
         size_t idx, max;
         jv block;
