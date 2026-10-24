@@ -155,6 +155,7 @@ bool state_save(const TranscriptFile *f, const StateSlot *slot, uint64_t off, co
     else if (!range_hash(f, buf, from, n, 0, w, &hd.head)) return false;
     if (!range_hash(f, buf, from, n, off - w, off, &hd.tail)) return false;
 
+    parser_compact(s);
     Blob b = {0};
     size_t h = put(&b, &hd, sizeof hd, 16);
     if (g_unsupported) {

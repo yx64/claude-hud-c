@@ -25,3 +25,6 @@ typedef struct {
     unsigned objects;
     Transcript *r;
 } Parser;
+
+// Drops what the maps deleted, before a save; see transcript.c.
+void parser_compact(Parser *s);

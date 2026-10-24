@@ -21,6 +21,9 @@
 #                     state is saved past it all the same, holding that clock. The clock stays put here,
 #                     since a full parse takes the clock of its own refresh; test/compare/cache.mjs moves
 #                     it and holds resuming to upstream's
+#   compact           more tools, agents and MCP errors than are tracked, so the maps delete entries and a
+#                     save drops them: resuming still prints what a full parse prints, and the state
+#                     stops growing once what is tracked is full
 cmake_minimum_required(VERSION 3.28)
 include(${CMAKE_CURRENT_LIST_DIR}/common.cmake)
 
@@ -112,14 +115,16 @@ function(want_offset ends cut out)
   set(${out} ${want} PARENT_SCOPE)
 endfunction()
 
-# The offset recorded in the state saved for <Transcript> under <State>, or empty when there is none:
-# <State>/<Name>.bin for <Name>.jsonl, a little-endian 64-bit offset at byte 8 (Header in
-# transcript-state.c).
-function(saved_offset state transcript out)
+# The offset recorded in the state saved for <Transcript> under <State>, and the state's size, or both
+# empty when there is none: <State>/<Name>.bin for <Name>.jsonl, a little-endian 64-bit offset at byte 8
+# (Header in transcript-state.c).
+function(saved_state state transcript out size_out)
   get_filename_component(name ${transcript} NAME_WE)
   set(f ${state}/${name}.bin)
   set(v "")
+  set(size "")
   if(EXISTS ${f})
+    file(SIZE ${f} size)
     file(READ ${f} h OFFSET 8 LIMIT 8 HEX)
     set(be "")
     foreach(i 14 12 10 8 6 4 2 0)
@@ -129,6 +134,7 @@ function(saved_offset state transcript out)
     math(EXPR v "0x${be}" OUTPUT_FORMAT DECIMAL)
   endif()
   set(${out} "${v}" PARENT_SCOPE)
+  set(${size_out} "${size}" PARENT_SCOPE)
 endfunction()
 
 # One refresh of <Transcript> by both builds; passes when they agree on exit code, output and, for an
@@ -179,7 +185,7 @@ function(grow name full ends cuts)
     endif()
     set(at ${c})
     check("${name}@${c}" ${tp})
-    saved_offset(${dir}/state ${tp} got)
+    saved_state(${dir}/state ${tp} got got_size)
     want_offset("${ends}" ${c} want)
     if(want EQUAL 0)
       set(want "")
@@ -371,6 +377,77 @@ if(sel)
   math(EXPR a "${start} / 2")
   math(EXPR b "${start} + 10")
   grow(timeless ${full} "${ends}" "${a};${b};${len}")
+endif()
+
+hud_selected(compact sel)
+if(sel)
+  section(compact)
+  # Six hundred tool calls: mostly Reads, every seventh an MCP call whose result is an error or not by
+  # turns, every fortieth an agent in the background, named by the id of its launch's result. Two agents
+  # later a notice carrying that id finishes it, so the id is looked up after saves have renumbered the
+  # agents; every third agent is never finished and stays shown. Lines of one kind have one length, so
+  # states that track as many of each kind come out about the same size.
+  set(text "")
+  set(cuts "")
+  foreach(i RANGE 1000 1599)
+    math(EXPR x "${i} - 1000")
+    math(EXPR mi "${x} / 60 + 10")
+    math(EXPR se "${x} % 60")
+    if(se LESS 10)
+      set(se "0${se}")
+    endif()
+    set(ts "2026-10-10T10:${mi}:${se}.000Z")
+    math(EXPR agent "${i} % 40")
+    math(EXPR mcp "${i} % 7")
+    if(agent EQUAL 0)
+      string(APPEND text "{\"type\":\"assistant\",\"timestamp\":\"${ts}\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu_a${i}\",\"name\":\"Task\",\"input\":{\"description\":\"agent ${i}\",\"subagent_type\":\"x\",\"run_in_background\":true}}]}}\n")
+      string(APPEND text "{\"type\":\"user\",\"timestamp\":\"${ts}\",\"toolUseResult\":{\"agentId\":\"ag${i}\",\"isAsync\":true},\"message\":{\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"toolu_a${i}\"}]}}\n")
+      math(EXPR done "${i} - 80")
+      math(EXPR kept "${done} / 40 % 3")
+      if(NOT done LESS 1000 AND NOT kept EQUAL 0)
+        string(APPEND text "{\"type\":\"queue-operation\",\"operation\":\"enqueue\",\"timestamp\":\"${ts}\",\"content\":\"<task-id>ag${done}</task-id>\"}\n")
+      endif()
+    elseif(mcp EQUAL 3)
+      math(EXPR srv "${i} % 5")
+      math(EXPR turn "${i} / 7 % 2")
+      set(err false)
+      if(turn EQUAL 0)
+        set(err true)
+      endif()
+      string(APPEND text "{\"type\":\"assistant\",\"timestamp\":\"${ts}\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu_m${i}\",\"name\":\"mcp__srv${srv}__op\",\"input\":{}}]}}\n")
+      string(APPEND text "{\"type\":\"user\",\"timestamp\":\"${ts}\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"toolu_m${i}\",\"is_error\":${err}}]}}\n")
+    else()
+      string(APPEND text "{\"type\":\"assistant\",\"timestamp\":\"${ts}\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu_r${i}\",\"name\":\"Read\",\"input\":{\"file_path\":\"/w/f${i}.txt\"}}]}}\n")
+      string(APPEND text "{\"type\":\"user\",\"timestamp\":\"${ts}\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"toolu_r${i}\"}]}}\n")
+    endif()
+    math(EXPR every "${i} % 23")
+    if(every EQUAL 0)
+      string(LENGTH "${text}" n)
+      list(APPEND cuts ${n})
+    endif()
+    if(i EQUAL 1300)
+      string(LENGTH "${text}" mid)
+    endif()
+  endforeach()
+  file(WRITE ${dir}/lines.jsonl "${text}")
+  set(full ${dir}/full/compact.jsonl)
+  build(${dir}/lines.jsonl lf ${full} ends)
+  file(SIZE ${full} len)
+  list(APPEND cuts ${mid} ${len})
+  list(REMOVE_DUPLICATES cuts)
+  list(SORT cuts COMPARE NATURAL)
+  # <Mid> is past the 256 tools tracked, so the state there and the last one saved, nearly twice as many
+  # tools later, both hold what is tracked and nothing more. Each grows a transcript of its own.
+  grow(compact-mid ${full} "${ends}" "${mid}")
+  saved_state(${dir}/state ${dir}/t/compact-mid.jsonl mid_at mid_size)
+  grow(compact ${full} "${ends}" "${cuts}")
+  saved_state(${dir}/state ${dir}/t/compact.jsonl end_at end_size)
+  math(EXPR bound "${mid_size} + ${mid_size} / 10")
+  if(end_size GREATER bound)
+    hud_fail("compact/size" "the state grew from ${mid_size} bytes at ${mid_at} to ${end_size} at ${end_at}")
+  else()
+    hud_pass("compact/size")
+  endif()
 endif()
 
 hud_finish()

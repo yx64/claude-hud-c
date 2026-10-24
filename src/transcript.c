@@ -85,6 +85,20 @@ om_ent *om_oldest(omap *m) {
     return m->head < m->n ? &m->e[m->head] : nullptr;
 }
 
+// The entries still alive, in order, under a new slot table; what each old entry's index became, -1 for
+// one dropped.
+static int32_t *om_compact(omap *m) {
+    int32_t *to = arena_alloc(sizeof(int32_t) * (size_t)(m->n + 1));
+    int32_t k = 0;
+    for (int32_t i = 0; i < m->n; i++) {
+        to[i] = m->e[i].alive ? k : -1;
+        if (m->e[i].alive) m->e[k++] = m->e[i];
+    }
+    m->n = k, m->head = 0;
+    om_rehash(m);
+    return to;
+}
+
 // ---- keys with Map's SameValueZero: the type is part of the key ----
 
 static void str_key(us s, const char **k, uint32_t *kn) {
@@ -122,6 +136,47 @@ static void val_key(jv v, unsigned *objects, const char **k, uint32_t *kn) {
         }                                                                             \
         (v).p[(v).n++] = (x);                                                         \
     } while (0)
+
+// The elements of v that m's entries reach, in the entries' order, each entry renumbered to its own.
+#define VCOMPACT(m, v)                                                                \
+    do {                                                                              \
+        typeof((v).p) q_ = arena_alloc(sizeof *q_ * (size_t)((m).n + 1));             \
+        for (int32_t i_ = 0; i_ < (m).n; i_++)                                        \
+            q_[i_] = (v).p[(m).e[i_].i], (m).e[i_].i = i_;                            \
+        (v).p = q_, (v).n = (v).cap = (m).n;                                          \
+    } while (0)
+
+// A deleted entry is never reused, so without this a saved state would grow with every tool and response
+// of the session, though only the last ones are tracked: the maps lose their deleted entries, and toolv,
+// agentv and errv the elements only those reached. Nothing else changes: the order of what is left, the
+// lookups, and what the next deletion takes.
+void parser_compact(Parser *s) {
+    if (s->tools.alive < s->tools.n) {
+        om_compact(&s->tools);
+        VCOMPACT(s->tools, s->toolv);
+    }
+    if (s->mcp_err.alive < s->mcp_err.n) {
+        om_compact(&s->mcp_err);
+        VCOMPACT(s->mcp_err, s->errv);
+    }
+    // agent_ids holds indices of agents' entries, so the agents are renumbered only while every id still
+    // tracked reaches an agent still tracked. Deleting an agent deletes its ids, so that always holds; the
+    // check only guards it.
+    bool ids_live = true;
+    for (int32_t i = 0; i < s->agent_ids.n; i++)
+        if (s->agent_ids.e[i].alive && !s->agents.e[s->agent_ids.e[i].i].alive) ids_live = false;
+    if (ids_live && s->agents.alive < s->agents.n) {
+        int32_t *to = om_compact(&s->agents);
+        VCOMPACT(s->agents, s->agentv);
+        for (int32_t i = 0; i < s->agent_ids.n; i++)
+            if (s->agent_ids.e[i].alive) s->agent_ids.e[i].i = to[s->agent_ids.e[i].i];
+    }
+    // Nothing refers to the entries of these by position (skills, mcp and task_idx delete none, so nothing
+    // changes for them).
+    omap *plain[] = {&s->skills, &s->mcp, &s->completions, &s->usage, &s->task_idx, &s->agent_ids};
+    for (size_t i = 0; i < countof(plain); i++)
+        if (plain[i]->alive < plain[i]->n) om_compact(plain[i]);
+}
 
 static double count(jv v) {
     if (!jis_num(v)) return 0;

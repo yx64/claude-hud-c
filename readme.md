@@ -85,7 +85,8 @@ section).
 
 To read only what was appended since the previous refresh, claude-hud-c saves its parse state per transcript, as
 `claude-hud-c/<TranscriptName>.bin` under the temporary directory: `%TEMP%` on Windows; on Linux and macOS the first
-of `TMPDIR`, `TMP`, `TEMP` that is set, else `/tmp`. A long session's file is a few hundred KB.
+of `TMPDIR`, `TMP`, `TEMP` that is set, else `/tmp`. A file holds only what claude-hud still tracks, not every tool
+the session ever ran; a long session's file is a few hundred KB.
 
 This is claude-hud-c's own design, and the reason its time in the table above stays flat as a session grows: parse only
 what was appended, keep the parser's state between refreshes, and trust a saved state only for the same file (by its
