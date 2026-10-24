@@ -105,15 +105,18 @@ jobs:
         timeout-minutes: 10
         run: ctest --test-dir build --progress --output-on-failure --no-tests=error --timeout 300
 
-      # What a downloaded executable asks of the machine it runs on: the newest glibc symbol version on Linux,
-      # the minimum macOS version on macOS.
+      # What a downloaded executable asks of the machine it runs on: on Linux nothing of its C library, as it is
+      # linked statically; the minimum macOS version on macOS.
       - name: Inspect (Linux)
         if: runner.os == 'Linux'
         shell: bash
         run: |
           set -euo pipefail
           file build/release/claude-hud-c
-          echo "needs glibc $(objdump -T build/release/claude-hud-c | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -n 1)"
+          if [[ $(file -b build/release/claude-hud-c) != *"static-pie linked"* ]]; then
+            echo "build/release/claude-hud-c is not linked statically"
+            exit 1
+          fi
       - name: Inspect (macOS)
         if: runner.os == 'macOS'
         shell: bash

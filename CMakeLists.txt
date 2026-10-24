@@ -98,12 +98,18 @@ if(WIN32)
   find_program(HUD_LLVM_READOBJ llvm-readobj HINTS ${HUD_LLVM_BIN} NO_DEFAULT_PATH REQUIRED)
   set(HUD_IMPORT_CHECK ${CMAKE_COMMAND} -DREADOBJ=${HUD_LLVM_READOBJ} -DALLOWED=KERNEL32.dll)
 elseif(UNIX)
-  # Linux and macOS, on the C library: there its start-up is cheap, and this side aims at working
-  # output rather than at the Windows side's start-up time. No import check: the libraries are the
-  # system's own.
-  # -lm  floor, fmod and the like live in libm on Linux
+  # Linux and macOS, on the C library. No import check: the libraries are the system's own.
+  # -lm          floor, fmod and the like live in libm on Linux
+  # -static-pie  Linux, the executables only: loading glibc and resolving its symbols took about a quarter
+  #              of a refresh that resumes. PIE keeps address randomisation. Of what needs glibc's shared
+  #              modules, only getpwuid is called, by os_home when HOME is unset: a user found only through an
+  #              NSS module other than files then has glibc load that module from the system, which works only
+  #              when it comes from the glibc version the build used. macOS links nothing statically
   set(HUD_PLATFORM_SOURCES src/os-posix.c)
   set(HUD_PLATFORM_LINK "")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(HUD_PLATFORM_LINK -static-pie)
+  endif()
   set(HUD_PLATFORM_LIBS m)
   set(HUD_IMPORT_CHECK "")
 else()

@@ -115,8 +115,8 @@ architecture.
 
 - **Windows**: the primary platform, Windows 10 or later. No C runtime is linked; the executable imports from
   `KERNEL32.dll` only.
-- **Linux**: builds on the C library; correct output, not tuned for start-up time. The prebuilt executables need
-  glibc 2.38 or later (Ubuntu 24.04, Debian 13 and later).
+- **Linux**: the executable is linked statically: it runs whatever glibc the machine has, and no refresh spends time
+  loading the C library.
 - **macOS**: 11 or later. Tested in CI only; no one has used it day to day on a Mac yet.
 
 ## Install
@@ -129,7 +129,9 @@ archives' checksums. The latest release is always at
 browser is quarantined, and so is the executable Finder unpacks from it; `xattr -d com.apple.quarantine <Executable>`
 lifts that.
 
-To build from source you need CMake 3.28 or later, Ninja, and clang with C23 support and lld (clang 18 is too old).
+To build from source you need CMake 3.28 or later, Ninja, and clang with C23 support and lld (clang 18 is too old). On
+Linux the executable links glibc statically, which takes its static archives (`libc6-dev` on Debian and Ubuntu,
+`glibc-static` on Fedora).
 Neither node nor claude-hud is needed to build, test or run it.
 
 ```
