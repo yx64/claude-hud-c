@@ -288,19 +288,34 @@ static bool tool_target(jv name, jv input, us *out) {
     if (jstr_eq(name, "Glob") || jstr_eq(name, "Grep")) return text_of(jget(input, "pattern"), out);
     if (jstr_eq(name, "Skill")) return short_name(jget(input, "skill"), out);
     if (jstr_eq(name, "Bash")) {
-        us s;
-        if (!text_of(jget(input, "command"), &s)) return false;
-        sb b = {0};
-        for (int32_t i = 0; i < s.n;) {
-            if (js_is_space(s.p[i])) {
-                while (i < s.n && js_is_space(s.p[i])) i++;
-                sb_ch(&b, ' ');
-            } else sb_ch(&b, s.p[i++]);
+        jv v = jget(input, "command");
+        if (!jis_str(v)) return false;
+        const char *raw = yyjson_get_str(v);
+        size_t rn = yyjson_get_len(v);
+        // Only the first 30 code units are shown, and a command can run to pages, so it is taken a prefix at a
+        // time, longer each round. A prefix that comes out longer than 30 begins as the whole command does,
+        // graphemes included: dropping a character and collapsing white space look at nothing after it, and
+        // what was cut is trimmed off the end. Not so for an escape sequence that may run past the cut, so a
+        // command with an ESC is taken whole; a cut inside a character moves back to where it starts.
+        bool esc = memchr(raw, 0x1B, rn) != nullptr;
+        for (size_t want = 256;; want *= 2) {
+            size_t take = esc || want >= rn ? rn : want;
+            while (take < rn && take && ((uint8_t)raw[take] & 0xC0) == 0x80) take--;
+            if (!take) take = rn;
+            us s = sanitize_display(us_utf8(raw, take));
+            sb b = {0};
+            for (int32_t i = 0; i < s.n;) {
+                if (js_is_space(s.p[i])) {
+                    while (i < s.n && js_is_space(s.p[i])) i++;
+                    sb_ch(&b, ' ');
+                } else sb_ch(&b, s.p[i++]);
+            }
+            us cmd = us_trim(sb_done(&b));
+            if (take < rn && cmd.n <= 30) continue;
+            if (!cmd.n) return false;
+            *out = cmd.n > 30 ? us_cat(us_trim_end(truncate_string(cmd, 30, US_EMPTY)), US("...")) : cmd;
+            return true;
         }
-        us cmd = us_trim(sb_done(&b));
-        if (!cmd.n) return false;
-        *out = cmd.n > 30 ? us_cat(us_trim_end(truncate_string(cmd, 30, US_EMPTY)), US("...")) : cmd;
-        return true;
     }
     return false;
 }
