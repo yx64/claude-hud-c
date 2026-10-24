@@ -11,6 +11,13 @@
 #include "transcript-state.h"
 
 enum { TOOLS_KEPT = 20, AGENTS_KEPT = 10, TOOLS_TRACKED = 256 };
+// The piece of a transcript read at a time (parse_transcript). The test build's is small and odd, so that the
+// cases' lines straddle pieces and outgrow the buffer.
+#if defined(HUD_C_TEST)
+enum { READ_CHUNK = 4093 };
+#else
+enum { READ_CHUNK = 1 << 20 };
+#endif
 
 // ---- ordered map ----
 
@@ -723,14 +730,14 @@ void parse_transcript(us path, double now, Transcript *r) {
     StateSlot slot = {0};
     uint64_t start = 0;
     bool resumed = state_load(&tf, &slot, &s, &start);
-    size_t n;
-    char *buf = read_rest(h, start, &n);
-    if (!buf) {
-        os_close(h);
-        *r = (Transcript){.session_start = NAN, .last_assistant_at = NAN};
-        g_unsupported = outer;
-        return;
-    }
+    // What follows the state, up to the size the file had when opened, is read a piece at a time into one
+    // buffer, the lines parsed dropped before the next piece: memory fresh from the system costs a fault per
+    // page, which for a whole transcript of many MB took more than reading it. buf holds n bytes of the file
+    // from offset base on; a line longer than the buffer doubles it, and scan is how far it holds no \n.
+    uint64_t end = tf.size, base = start, at = start;
+    size_t cap = (size_t)(end - start < READ_CHUNK ? end - start : READ_CHUNK) + 1, n = 0, scan = 0;
+    char *buf = xmalloc(cap);
+    bool eof = false;
     yyjson_read_flag flg = YYJSON_READ_ALLOW_INVALID_UNICODE;
     size_t poolcap = 0;
     void *pool = nullptr;
@@ -739,11 +746,22 @@ void parse_transcript(us path, double now, Transcript *r) {
     // JSON.parse takes it for white space. Each line is decoded on its own, a character cut at the end of the
     // file included.
     for (size_t i = 0;;) {
-        size_t j = i < n ? line_stop(buf, i, n) : n;
+        size_t j = scan < n ? line_stop(buf, scan, n) : n;
+        if (j == n && !eof) {
+            if (i) memmove(buf, buf + i, n - i), base += i, n -= i, i = 0;
+            scan = n;
+            if (n == cap) buf = xrealloc(buf, cap *= 2);
+            size_t want = cap - n < READ_CHUNK ? cap - n : READ_CHUNK;
+            if (want > end - at) want = (size_t)(end - at);
+            // Cut shorter while being read: what came before is all there is.
+            if (!want || !read_at(h, at, buf + n, (uint32_t)want)) eof = true;
+            else n += want, at += want;
+            continue;
+        }
         // The state is kept before the first line that is not complete, the last one, still being written:
         // it counts for this refresh and is read again by the next.
         if (!kept && j == n) {
-            uint64_t off = start + i;
+            uint64_t off = base + i;
             kept = true;
             // Saving a byte of state costs about what parsing a byte of transcript does, so a state taken up is
             // saved again only once what was parsed past it reaches a quarter of its size: until then each
@@ -751,7 +769,7 @@ void parse_transcript(us path, double now, Transcript *r) {
             // A line that took the refresh's clock is saved at once, since parsing it again would take
             // another.
             bool defer = resumed && off - start < slot.size / 4 && !s.took_clock;
-            if (off && !(resumed && off == start) && !defer) saved = state_save(&tf, &slot, off, buf, start, n, &s);
+            if (off && !(resumed && off == start) && !defer) saved = state_save(&tf, &slot, off, buf, base, n, &s);
         }
         if (i == n) break;
         size_t len = j - i;
@@ -777,7 +795,7 @@ void parse_transcript(us path, double now, Transcript *r) {
         // Everything kept from a line is copied out of the pool, so the next line may reuse it.
         on_line(&s, doc ? yyjson_doc_get_root(doc) : nullptr, now);
         free(fixed);
-        i = j < n ? j + 1 : n;
+        i = scan = j < n ? j + 1 : n;
     }
     free(pool);
     free(buf);
