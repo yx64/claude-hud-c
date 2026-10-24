@@ -51,9 +51,24 @@ static const size_t AGENT_STRS[] = {offsetof(Agent, type), offsetof(Agent, desc)
 static const size_t TODO_STRS[] = {offsetof(Todo, content)};
 static const size_t STR_STRS[] = {0};
 
-static uint64_t fnv1a(const void *p, size_t n) {
-    uint64_t h = 14695981039346656037u;
-    for (size_t i = 0; i < n; i++) h = (h ^ ((const uint8_t *)p)[i]) * 1099511628211u;
+// Eight bytes a step in four lanes of their own, so that the four multiplications of a step do not wait on one
+// another: FNV-1a, a byte a step, each waiting on the last, took a twentieth of a refresh that resumes. Each step
+// is a bijection of its lane, so bytes that differ in one word always change the hash.
+static uint64_t window_hash(const void *p, size_t n) {
+    static const uint64_t K[4] = {0x9E3779B97F4A7C15u, 0xC2B2AE3D27D4EB4Fu, 0x165667B19E3779F9u, 0xD6E8FEB86659FD93u};
+    const uint8_t *b = p;
+    uint64_t lane[4] = {K[0], K[1], K[2], K[3]};
+    size_t i = 0;
+    for (; i + 32 <= n; i += 32)
+        for (int k = 0; k < 4; k++) {
+            uint64_t w;
+            memcpy(&w, b + i + 8 * k, 8);
+            lane[k] = (lane[k] ^ w) * K[k];
+            lane[k] ^= lane[k] >> 29;
+        }
+    uint64_t h = n;
+    for (; i < n; i++) h = (h ^ b[i]) * 1099511628211u;
+    for (int k = 0; k < 4; k++) h = (h ^ lane[k]) * K[k], h ^= h >> 32;
     return h;
 }
 
@@ -61,12 +76,12 @@ static uint64_t fnv1a(const void *p, size_t n) {
 // bytes from offset `from` on, when they lie there, else read from the file.
 static bool range_hash(const TranscriptFile *f, const char *buf, uint64_t from, size_t n, uint64_t lo, uint64_t hi, uint64_t *out) {
     if (buf && lo >= from && hi <= from + n) {
-        *out = fnv1a(buf + (lo - from), (size_t)(hi - lo));
+        *out = window_hash(buf + (lo - from), (size_t)(hi - lo));
         return true;
     }
     char w[WINDOW];
     if (!read_at(f->h, lo, w, (uint32_t)(hi - lo))) return false;
-    *out = fnv1a(w, (size_t)(hi - lo));
+    *out = window_hash(w, (size_t)(hi - lo));
     return true;
 }
 
