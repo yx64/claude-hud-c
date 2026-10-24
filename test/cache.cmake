@@ -9,7 +9,9 @@
 #   lf crlf cr ls ps mixed  transcripts of cache/lines.jsonl ending their lines with \n, \r\n, \r,
 #                     U+2028, U+2029, or all five in turn, grown in place cut point by cut point: at
 #                     line ends, inside lines, right after a \r, inside a three-byte terminator. Only a
-#                     \n ends a line; after each step the saved state must sit right after the last one
+#                     \n ends a line; after each step the saved state must sit right after the last one,
+#                     or where it sat before while what was parsed past it is less than a quarter of its
+#                     size (see grow)
 #   invalidate        the file rewritten in its first bytes or just before the saved offset, replaced
 #                     by another file, cut shorter, the state file damaged or cut short: each must
 #                     parse from the start
@@ -18,7 +20,8 @@
 #   same-name         two transcripts with one file name, whose states share a name
 #   unsupported       an unsupported case in the saved part is still reported when resuming
 #   timeless          an agent's tool line without a time takes the clock of the refresh parsing it, and a
-#                     state is saved past it all the same, holding that clock. The clock stays put here,
+#                     state is saved past it at once, holding that clock, however little was parsed
+#                     past the state before. The clock stays put here,
 #                     since a full parse takes the clock of its own refresh; test/compare/cache.mjs moves
 #                     it and holds resuming to upstream's
 #   compact           more tools, agents and MCP errors than are tracked, so the maps delete entries and a
@@ -173,8 +176,15 @@ endfunction()
 
 # Grows t/<Name>.jsonl in place from nothing to the bytes of <Full> through <Cuts>, the last one twice,
 # checking at each step. The saved state must sit right after the last complete line of what has been
-# written so far.
+# written so far, or stay where it was: as parse_transcript in transcript.c decides, a state taken up
+# (here every one, as the file only grows) stays put while what was parsed past it is less than a quarter
+# of its size and holds no line that took the clock. <ClockAt>, when given, is where the one line that
+# takes the clock starts.
 function(grow name full ends cuts)
+  set(clock_at "")
+  if(ARGC GREATER 4)
+    set(clock_at ${ARGV4})
+  endif()
   set(tp ${dir}/t/${name}.jsonl)
   file(WRITE ${tp} "")
   set(at 0)
@@ -184,9 +194,21 @@ function(grow name full ends cuts)
       execute_process(COMMAND ${HUD_BYTES} append ${full} ${tp} ${at} ${c} COMMAND_ERROR_IS_FATAL ANY)
     endif()
     set(at ${c})
+    saved_state(${dir}/state ${tp} before before_size)
     check("${name}@${c}" ${tp})
     saved_state(${dir}/state ${tp} got got_size)
     want_offset("${ends}" ${c} want)
+    if(NOT before STREQUAL "")
+      math(EXPR past "${want} - ${before}")
+      math(EXPR quarter "${before_size} / 4")
+      set(clock OFF)
+      if(NOT clock_at STREQUAL "" AND NOT clock_at LESS before AND clock_at LESS want)
+        set(clock ON)
+      endif()
+      if(past LESS quarter AND NOT clock)
+        set(want ${before})
+      endif()
+    endif()
     if(want EQUAL 0)
       set(want "")
     endif()
@@ -376,7 +398,12 @@ if(sel)
   string(FIND "${t}" "${timeless_line}" start)
   math(EXPR a "${start} / 2")
   math(EXPR b "${start} + 10")
-  grow(timeless ${full} "${ends}" "${a};${b};${len}")
+  grow(timeless ${full} "${ends}" "${a};${b};${len}" ${start})
+  # A state right before the line, then the line alone: far less than a quarter of the state is parsed past
+  # it, so only the line's taking the clock has the state saved at once.
+  string(LENGTH "${timeless_line}" line_len)
+  math(EXPR line_end "${start} + ${line_len} + 1")
+  grow(timeless-alone ${full} "${ends}" "${start};${line_end}" ${start})
 endif()
 
 hud_selected(compact sel)

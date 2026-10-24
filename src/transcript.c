@@ -614,8 +614,11 @@ static void on_line(Parser *s, jv e, double now) {
         jv block;
         yyjson_arr_foreach(content, idx, max, block) {
             jv bt = jget(block, "type");
-            if (jstr_eq(bt, "tool_use") && jtruthy(jget(block, "id")) && jtruthy(jget(block, "name"))) tool_use(s, block, t);
-            if (jstr_eq(bt, "tool_result") && jtruthy(jget(block, "tool_use_id"))) tool_result(s, block, e, t);
+            bool use = jstr_eq(bt, "tool_use") && jtruthy(jget(block, "id")) && jtruthy(jget(block, "name"));
+            bool result = jstr_eq(bt, "tool_result") && jtruthy(jget(block, "tool_use_id"));
+            if ((use || result) && isnan(at)) s->took_clock = true;
+            if (use) tool_use(s, block, t);
+            if (result) tool_result(s, block, e, t);
         }
     }
 }
@@ -727,7 +730,13 @@ void parse_transcript(us path, double now, Transcript *r) {
         if (!kept && j == n) {
             uint64_t off = start + i;
             kept = true;
-            if (off && !(resumed && off == start)) saved = state_save(&tf, &slot, off, buf, start, n, &s);
+            // Saving a byte of state costs about what parsing a byte of transcript does, so a state taken up is
+            // saved again only once what was parsed past it reaches a quarter of its size: until then each
+            // refresh parses those lines again, which costs less than the save, and saves every few appends.
+            // A line that took the refresh's clock is saved at once, since parsing it again would take
+            // another.
+            bool defer = resumed && off - start < slot.size / 4 && !s.took_clock;
+            if (off && !(resumed && off == start) && !defer) saved = state_save(&tf, &slot, off, buf, start, n, &s);
         }
         if (i == n) break;
         size_t len = j - i;

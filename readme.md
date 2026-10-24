@@ -94,6 +94,10 @@ identity) whose first block and the block before the saved offset still hash the
 incremental reading of its own, with its saved states under its plugin directory (`transcript-cursors`); claude-hud-c
 neither reads nor writes those.
 
+A state is saved again once what was appended past it reaches a quarter of its size, or at once after a line that takes
+the refresh's clock (a tool line without a time); until then each refresh parses those lines again, which costs less
+than writing the state.
+
 The files are a cache: deleting them is always safe, and a missing or outdated one only costs a full parse of that
 transcript on its next refresh, after which the state is saved again. A new build of claude-hud-c ignores the files an
 earlier build wrote and replaces them as it goes.

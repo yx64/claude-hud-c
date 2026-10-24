@@ -17,6 +17,7 @@ typedef struct {
     us path;
     uint64_t head;  // the hash of the transcript's first window, when known
     bool head_known;
+    uint64_t size;  // of the state taken up
 } StateSlot;
 
 #if defined(HUD_C_NO_TRANSCRIPT_STATE)

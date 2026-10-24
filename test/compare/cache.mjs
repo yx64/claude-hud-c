@@ -3,7 +3,8 @@
 // of real ones, and synthetic ones mixing every line terminator) grow in place cut point by cut point: at
 // line ends, inside lines, right after a \r, inside the three bytes of U+2028. At each step the test
 // build, resuming, is compared with the reference reading the same bytes, and the saved state must sit
-// right after the last \n. Then the cases where a saved state must not be taken up: the file rewritten
+// right after the last \n, or where it sat before while what was parsed past it is less than a quarter of
+// its size (see grow). Then the cases where a saved state must not be taken up: the file rewritten
 // in its first bytes or just before the offset, replaced by another file, cut shorter, the state file
 // damaged or cut short; two transcripts with one file name, whose states share a name; plus an
 // unsupported case inside the saved part, and a line that takes the clock. A file rewritten in place
@@ -66,18 +67,47 @@ function compare(label, { rc, rn }) {
   return same;
 }
 
-// Where the saved state should be after a refresh of buf: right after the last \n, the only line end.
+// Right after the last \n of buf, the only line end.
 const resumeOffset = (buf) => buf.lastIndexOf(0x0a) + 1;
 
-// The offset recorded in the state saved for tp, or null when there is none: <Cache>/<name>.bin for
-// <name>.jsonl, the offset at byte 8 (transcript-state.c's Header).
-function savedOffset(cache, tp) {
+// The offset recorded in the state saved for tp and the state's size, or null when there is none:
+// <Cache>/<name>.bin for <name>.jsonl, the offset at byte 8 (transcript-state.c's Header).
+function savedState(cache, tp) {
   const f = path.join(cache, `${path.basename(tp, '.jsonl')}.bin`);
-  return fs.existsSync(f) ? Number(fs.readFileSync(f).readBigUInt64LE(8)) : null;
+  if (!fs.existsSync(f)) return null;
+  const b = fs.readFileSync(f);
+  return { off: Number(b.readBigUInt64LE(8)), size: b.length };
 }
 
-// Grows tp from nothing through the cut points, comparing at each step. The saved state must sit
-// right after the last complete line. Given a tick, the frozen clock moves on by that much every step.
+// Whether a line among the complete ones in bytes takes the refresh's clock: a user or assistant line
+// without a time, with a tool_use or tool_result block that counts (transcript.c's on_line).
+function takesClock(bytes) {
+  const lines = bytes.toString('utf8').split('\n').slice(0, -1);
+  return lines.some((l) => {
+    let e;
+    try { e = JSON.parse(l); } catch { return false; }
+    if (!e || typeof e !== 'object' || Array.isArray(e) || (e.type !== 'user' && e.type !== 'assistant')) return false;
+    const content = e.message && typeof e.message === 'object' ? e.message.content : undefined;
+    if (!Array.isArray(content)) return false;
+    const ts = e.timestamp;
+    const at = !ts ? NaN : typeof ts === 'string' ? Date.parse(ts) : typeof ts === 'number' ? (Math.abs(ts) <= 8.64e15 ? ts : NaN) : typeof ts === 'boolean' ? 1 : NaN;
+    return Number.isNaN(at) && content.some((b) => b && typeof b === 'object' &&
+      ((b.type === 'tool_use' && b.id && b.name) || (b.type === 'tool_result' && b.tool_use_id)));
+  });
+}
+
+// Where the saved state should be after a refresh of buf, given the state before it: right after the last
+// \n, or, as parse_transcript in transcript.c decides, where it was, when that state was taken up (here
+// every one, as the file only grows), what was parsed past it is less than a quarter of its size, and no
+// line of that takes the clock.
+function wantOffset(buf, before) {
+  const want = resumeOffset(buf) || null;
+  if (!before || want === null || want - before.off >= Math.floor(before.size / 4)) return want;
+  return takesClock(buf.subarray(before.off, want)) ? want : before.off;
+}
+
+// Grows tp from nothing through the cut points, comparing at each step and checking where the state was
+// saved (wantOffset). Given a tick, the frozen clock moves on by that much every step.
 async function grow(name, bytes, cuts, tick = 0) {
   const tp = path.join(workDir, 't', `${name}.jsonl`);
   const cache = path.join(workDir, 'cache', `${name}-${seq++}`);
@@ -88,9 +118,10 @@ async function grow(name, bytes, cuts, tick = 0) {
   for (const cut of [...cuts, cuts[cuts.length - 1]]) {
     if (cut > at) fs.appendFileSync(tp, bytes.subarray(at, cut));
     at = cut;
+    const before = savedState(cache, tp);
     compare(`${name} @${cut}`, await refresh(tp, cache, { HUD_FAKE_NOW_MS: String(NOW + tick * step++) }));
-    const want = resumeOffset(bytes.subarray(0, cut)) || null;
-    const got = savedOffset(cache, tp);
+    const want = wantOffset(bytes.subarray(0, cut), before);
+    const got = savedState(cache, tp)?.off ?? null;
     if (got !== want) {
       stats.offsetWrong++;
       if (failures.length < 20) failures.push({ label: `${name} @${cut}`, savedOffset: got, expected: want });

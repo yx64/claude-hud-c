@@ -10,8 +10,8 @@ typedef VEC(Agent) AgentVec;
 typedef VEC(Todo) TodoVec;
 typedef VEC(us) StrVec;
 
-// Every field but r is saved; a field added here must be added to the layout in transcript-state.c
-// as well.
+// Every field but r and took_clock is saved; a field added here must be added to the layout in
+// transcript-state.c as well.
 typedef struct {
     omap tools, agents, skills, mcp, mcp_err, completions, usage, task_idx;
     omap agent_ids;  // agentIdToToolUseId: a subagent's id to the index of its entry in agents
@@ -23,6 +23,7 @@ typedef struct {
     double idless[4];
     double settled[4];
     unsigned objects;
+    bool took_clock;  // a line parsed by this refresh took the refresh's clock (on_line)
     Transcript *r;
 } Parser;
 

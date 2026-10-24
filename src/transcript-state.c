@@ -1,7 +1,8 @@
 // The parser state kept between refreshes; see transcript-state.h.
 //
 // Parsing is a fold over lines, and Claude Code only ever appends to a transcript, so the state
-// after the last complete line is saved and the next refresh parses only what came after it. A
+// after the last complete line is saved and the next refresh parses only what came after it (once
+// enough came after it, see parse_transcript: until then the state stays where it was). A
 // saved state is taken up only when this very build wrote it, for the same file (os_identity), at
 // an offset the file still reaches, with the same bytes in the file's first window and in
 // the window before the offset; anything else parses from the start. A rewrite in the middle,
@@ -166,6 +167,7 @@ bool state_save(const TranscriptFile *f, const StateSlot *slot, uint64_t off, co
     AT(&b, h, Header)->parser = ref(pa);
     AT(&b, h, Header)->transcript = ref(ta);
     AT(&b, pa, Parser)->r = nullptr;
+    AT(&b, pa, Parser)->took_clock = false;
     static const size_t maps[] = {offsetof(Parser, tools), offsetof(Parser, agents), offsetof(Parser, skills), offsetof(Parser, mcp),
                                   offsetof(Parser, mcp_err), offsetof(Parser, completions), offsetof(Parser, usage), offsetof(Parser, task_idx),
                                   offsetof(Parser, agent_ids)};
@@ -295,6 +297,7 @@ bool state_load(const TranscriptFile *f, StateSlot *slot, Parser *s, uint64_t *o
     r->ntools = r->nagents = r->ntodos = r->nskills = r->nmcp = r->nmcp_err = 0;
     if (hd->why) UNSUPPORTED(hd->why);
     slot->head = head, slot->head_known = w == WINDOW;
+    slot->size = sz;
     *off = hd->off;
     return true;
 }
