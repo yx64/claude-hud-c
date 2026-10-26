@@ -259,9 +259,10 @@ static bool fix_vec(Span f, void *vec, size_t elem, const size_t *strs, size_t n
     return true;
 }
 
-static bool map_in(const omap *m, int32_t n) {
+// lo is -1 for task_idx, whose retired ids hold -1.
+static bool map_in(const omap *m, int32_t lo, int32_t n) {
     for (int32_t i = 0; i < m->n; i++)
-        if (m->e[i].alive && (m->e[i].i < 0 || m->e[i].i >= n)) return false;
+        if (m->e[i].alive && (m->e[i].i < lo || m->e[i].i >= n)) return false;
     return true;
 }
 
@@ -273,9 +274,9 @@ static bool fix_parser(Span f, Parser *p) {
            fix_vec(f, &p->agentv, sizeof(Agent), AGENT_STRS, countof(AGENT_STRS)) &&
            fix_vec(f, &p->todos, sizeof(Todo), TODO_STRS, countof(TODO_STRS)) &&
            fix_vec(f, &p->skillv, sizeof(us), STR_STRS, countof(STR_STRS)) && fix_vec(f, &p->mcpv, sizeof(us), STR_STRS, countof(STR_STRS)) &&
-           fix_vec(f, &p->errv, sizeof(us), STR_STRS, countof(STR_STRS)) && map_in(&p->tools, p->toolv.n) && map_in(&p->agents, p->agentv.n) &&
-           map_in(&p->skills, p->skillv.n) && map_in(&p->mcp, p->mcpv.n) && map_in(&p->mcp_err, p->errv.n) && map_in(&p->task_idx, p->todos.n) &&
-           map_in(&p->agent_ids, p->agents.n);
+           fix_vec(f, &p->errv, sizeof(us), STR_STRS, countof(STR_STRS)) && map_in(&p->tools, 0, p->toolv.n) && map_in(&p->agents, 0, p->agentv.n) &&
+           map_in(&p->skills, 0, p->skillv.n) && map_in(&p->mcp, 0, p->mcpv.n) && map_in(&p->mcp_err, 0, p->errv.n) &&
+           map_in(&p->task_idx, -1, p->todos.n) && map_in(&p->agent_ids, 0, p->agents.n);
 }
 
 bool state_load(const TranscriptFile *f, StateSlot *slot, Parser *s, uint64_t *off) {

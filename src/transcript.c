@@ -178,8 +178,8 @@ void parser_compact(Parser *s) {
         for (int32_t i = 0; i < s->agent_ids.n; i++)
             if (s->agent_ids.e[i].alive) s->agent_ids.e[i].i = to[s->agent_ids.e[i].i];
     }
-    // Nothing refers to the entries of these by position (skills, mcp and task_idx delete none, so nothing
-    // changes for them).
+    // Nothing refers to the entries of these by position (skills and mcp delete none, so nothing changes
+    // for them).
     omap *plain[] = {&s->skills, &s->mcp, &s->completions, &s->usage, &s->task_idx, &s->agent_ids};
     for (size_t i = 0; i < countof(plain); i++)
         if (plain[i]->alive < plain[i]->n) om_compact(plain[i]);
@@ -327,51 +327,49 @@ static bool tool_target(jv name, jv input, us *out) {
     return false;
 }
 
-// TodoWrite replaces the list; TaskCreate ids follow their todo by content, in order.
-static void replace_todos(Parser *s, TodoVec next) {
-    typedef struct { int32_t idx; om_ent *e; } Old;
-    VEC(Old) old = {0};
+// Whether find_task falls back to a position for this id: a string of digits only.
+static bool digit_key(const om_ent *e) {
+    if (e->k[0] != 's' || e->kn < 3) return false;
+    for (uint32_t j = 1; j < e->kn; j += 2) {
+        uint16_t c;
+        memcpy(&c, e->k + j, 2);
+        if (c < '0' || c > '9') return false;
+    }
+    return true;
+}
+
+// moveTasks: points each live task id at its todo's new index, to[old index], or retires it with -1 so it
+// can't fall back to whichever task now holds its old position. Only a digit id could fall back, so any
+// other is deleted instead: it finds nothing all the same, and a saved state does not keep it.
+static void move_tasks(Parser *s, const int32_t *to) {
     for (int32_t i = 0; i < s->task_idx.n; i++) {
         om_ent *e = &s->task_idx.e[i];
-        if (e->alive) VPUSH(old, ((Old){e->i, e}));
-    }
-    for (int32_t i = 1; i < old.n; i++) {  // stable sort by index
-        Old x = old.p[i];
-        int32_t j = i - 1;
-        while (j >= 0 && old.p[j].idx > x.idx) old.p[j + 1] = old.p[j], j--;
-        old.p[j + 1] = x;
-    }
-    typedef struct { us content; om_ent **ids; int32_t n, head; } Queue;
-    VEC(Queue) queues = {0};
-    for (int32_t i = 0; i < old.n; i++) {
-        if (old.p[i].idx < 0 || old.p[i].idx >= s->todos.n) continue;
-        us content = s->todos.p[old.p[i].idx].content;
-        Queue *q = nullptr;
-        for (int32_t j = 0; j < queues.n && !q; j++)
-            if (us_eq(queues.p[j].content, content)) q = &queues.p[j];
-        if (!q) {
-            VPUSH(queues, ((Queue){content, arena_alloc(sizeof(om_ent *) * (size_t)old.n), 0, 0}));
-            q = &queues.p[queues.n - 1];
-        }
-        q->ids[q->n++] = old.p[i].e;
-    }
-    s->todos = next;
-    // The old map's entries stay valid after the reset: the arena never frees.
-    s->task_idx = (omap){0};
-    for (int32_t i = 0; i < s->todos.n; i++) {
-        for (int32_t j = 0; j < queues.n; j++) {
-            Queue *q = &queues.p[j];
-            if (!us_eq(q->content, s->todos.p[i].content)) continue;
-            if (q->head < q->n) {
-                om_ent *old_e = q->ids[q->head++];
-                om_put(&s->task_idx, old_e->k, old_e->kn, nullptr)->i = i;
-            }
-            break;
-        }
+        if (!e->alive || e->i < 0) continue;
+        e->i = to[e->i];
+        if (e->i < 0 && !digit_key(e)) om_del(&s->task_idx, e);
     }
 }
 
-// findTask: the id TaskCreate returned, or a 1-based position
+// TodoWrite replaces the list. Each todo takes over the ids of the first unclaimed old todo with the same
+// content, so duplicate-content todos each keep their own; dropped todos' ids retire.
+static void replace_todos(Parser *s, TodoVec next) {
+    int32_t *to = arena_alloc(sizeof(int32_t) * (size_t)(s->todos.n + 1));
+    for (int32_t j = 0; j < s->todos.n; j++) to[j] = -1;
+    int32_t lo = 0;  // the old todos before it are all claimed: a list written again in order scans none twice
+    for (int32_t i = 0; i < next.n; i++) {
+        while (lo < s->todos.n && to[lo] >= 0) lo++;
+        for (int32_t j = lo; j < s->todos.n; j++) {
+            if (to[j] < 0 && us_eq(s->todos.p[j].content, next.p[i].content)) {
+                to[j] = i;
+                break;
+            }
+        }
+    }
+    s->todos = next;
+    move_tasks(s, to);
+}
+
+// findTask: the id TaskCreate returned, or a 1-based position; a retired id finds nothing
 static int32_t find_task(Parser *s, jv id) {
     sb b = {0};
     if (jis_str(id)) sb_us(&b, jstr(id));
@@ -444,21 +442,34 @@ static void tool_use(Parser *s, jv block, double at) {
         if (!text_of(jget(input, "subject"), &content) && !text_of(jget(input, "description"), &content)) content = US("Untitled task");
         int status = task_status(jget(input, "status"));
         VPUSH(s->todos, ((Todo){content, status >= 0 ? status : TD_PENDING}));
+        int32_t last = s->todos.n - 1;
+        // Claude Code numbers TaskCreate tasks 1, 2, 3... and never reuses a number.
+        us numbered = us_int(++s->tasks_created);
         jv raw = jget(input, "taskId");
-        const char *tk;
-        uint32_t tkn;
+        us tid = US_EMPTY;
         if (jis_str(raw) || jis_num(raw)) {
             sb b = {0};
             if (jis_str(raw)) sb_us(&b, jstr(raw));
             else sb_num(&b, jnum(raw));
-            us tid = sb_done(&b);
-            if (!tid.n) return;
-            str_key(tid, &tk, &tkn);
-        } else tk = k, tkn = kn;
-        om_put(&s->task_idx, tk, tkn, nullptr)->i = s->todos.n - 1;
+            tid = sb_done(&b);
+        }
+        const char *tk;
+        uint32_t tkn;
+        str_key(tid.n ? tid : numbered, &tk, &tkn);
+        om_put(&s->task_idx, tk, tkn, nullptr)->i = last;
+        if (!tid.n && jtruthy(id)) om_put(&s->task_idx, k, kn, nullptr)->i = last;
     } else if (jstr_eq(name, "TaskUpdate")) {
         int32_t i = find_task(s, jget(input, "taskId"));
         if (i < 0) return;
+        if (jstr_eq(jget(input, "status"), "deleted")) {
+            // Drop the task, retire its ids, and shift later tasks' ids up one.
+            int32_t *to = arena_alloc(sizeof(int32_t) * (size_t)s->todos.n);
+            for (int32_t j = 0; j < s->todos.n; j++) to[j] = j == i ? -1 : j > i ? j - 1 : j;
+            memmove(&s->todos.p[i], &s->todos.p[i + 1], sizeof *s->todos.p * (size_t)(s->todos.n - i - 1));
+            s->todos.n--;
+            move_tasks(s, to);
+            return;
+        }
         int status = task_status(jget(input, "status"));
         if (status >= 0) s->todos.p[i].status = status;
         us content;

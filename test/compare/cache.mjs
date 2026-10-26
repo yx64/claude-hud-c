@@ -145,8 +145,9 @@ function syntheticLines(n, t0 = Date.parse('2026-10-10T10:00:00Z')) {
     const input = tool === 'Skill' ? { skill: `skill-${i % 3}` }
       : tool === 'Task' ? { subagent_type: 'general', description: `job ${i} …─✓`, model: 'claude-haiku-4-5-20251001', run_in_background: i % 4 === 0 }
       : tool === 'TodoWrite' ? { todos: [{ content: `step ${i}`, status: 'completed' }, { content: `next ${i}`, status: 'in_progress' }] }
-      : tool === 'TaskCreate' ? { subject: `task ${i}`, taskId: String(i) }
-      : tool === 'TaskUpdate' ? { taskId: String(i - 1), status: 'completed' }
+      : tool === 'TaskCreate' ? (i % 20 === 8 ? { subject: `task ${i}`, taskId: String(i) } : { subject: `task ${i}` })
+      : tool === 'TaskUpdate' ? (i % 20 === 9 ? { taskId: String(i - 1), status: i % 60 === 9 ? 'deleted' : 'completed' }
+        : { taskId: String(Math.floor(i / 10)), status: i % 40 === 19 ? 'deleted' : 'in_progress' })
       : tool === 'Bash' ? { command: `echo ${'x'.repeat(i % 40)}` }
       : { file_path: `C:\\work\\${'深'.repeat(i % 5)}file-${i}.txt`, pattern: 'a.*b' };
     lines.push({ type: 'assistant', timestamp: ts(i), requestId: `r${i}`, advisorModel: i % 7 === 0 ? 'claude-opus-4-7' : undefined,

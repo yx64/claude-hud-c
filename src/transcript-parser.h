@@ -23,6 +23,7 @@ typedef struct {
     double idless[4];
     double settled[4];
     unsigned objects;
+    int64_t tasks_created;  // TaskCreate calls so far, which number their tasks 1, 2, 3...
     bool took_clock;  // a line parsed by this refresh took the refresh's clock (on_line)
     Transcript *r;
 } Parser;
