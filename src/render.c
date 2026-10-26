@@ -1614,6 +1614,12 @@ static bool is_activity(int el) { return el == EL_TOOLS || el == EL_SKILLS || el
 
 // ---- render/expanded.js ----
 
+static bool placed(int el) {
+    for (int i = 0; i < CF->nelem; i++)
+        if (CF->elem[i] == el) return true;
+    return false;
+}
+
 static us project_line(void) {
     KPart parts[MAX_PARTS];
     int n = 0;
@@ -1631,7 +1637,8 @@ static us project_line(void) {
     ADD(session_name_part(), SEG_SESSION_NAME);
     ADD(version_part(), SEG_VERSION);
     ADD(duration_part(), SEG_DURATION);
-    ADD(cost_part(), SEG_COST);
+    // Until cost is placed in elementOrder, it stays on the first line.
+    if (!placed(EL_COST)) ADD(cost_part(), SEG_COST);
     ADD(speed_part(), SEG_SPEED);
     ADD(auth_part(), SEG_AUTH);
     ADD(custom_line_part(false), -1);
@@ -1655,6 +1662,7 @@ static us element_line(int el, Align a) {
     case EL_ENVIRONMENT: return environment_line();
     case EL_SESSION_TIME: return session_time_line();
     case EL_SESSION_TOKENS: return CF->d.show_session_tokens ? session_tokens_summary(t(T_TOKENS)) : US_EMPTY;
+    case EL_COST: return cost_part();
     }
     return activity_line(el);
 }

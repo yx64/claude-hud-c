@@ -103,7 +103,7 @@ static us usage_path(jv v, us home) {
 
 // In enum order; the asserts catch a name missing from either side.
 static const char *const EL_NAMES[] = {"project", "addedDirs", "context", "usage", "promptCache", "cacheHitRate", "memory",
-                                       "environment", "tools", "skills", "mcp", "agents", "todos", "sessionTime", "sessionTokens"};
+                                       "environment", "tools", "skills", "mcp", "agents", "todos", "sessionTime", "sessionTokens", "cost"};
 static const char *const SEG_NAMES[] = {"model", "project", "advisor", "sessionName", "version",
                                         "extra", "duration", "cost", "speed", "auth"};
 static_assert(countof(EL_NAMES) == EL_COUNT);
@@ -227,10 +227,11 @@ void load_config(Config *c, us claude_dir, us home) {
 
     jv eo = top("elementOrder");
     c->nelem = jis_arr(eo) ? names(eo, EL_NAMES, EL_COUNT, c->elem) : 0;
-    // sessionTokens is left out of the default, so the tokens summary keeps its own last line until placed.
+    // sessionTokens and cost are left out of the default, so they keep their built-in place (the tokens
+    // summary's last line, cost on the first line) until placed.
     if (!c->nelem)
         for (int i = 0; i < EL_COUNT; i++)
-            if (i != EL_SESSION_TOKENS) c->elem[c->nelem++] = i;
+            if (i != EL_SESSION_TOKENS && i != EL_COST) c->elem[c->nelem++] = i;
     jv po = top("projectLineOrder");
     c->nplo = jis_arr(po) ? names(po, SEG_NAMES, SEG_COUNT, c->plo) : 0;
 
