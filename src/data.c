@@ -184,7 +184,7 @@ void count_configs(Ctx *ctx) {
 static bool auth_value(jv obj, const char *key, us *out) {
     jv v = jget(obj, key);
     if (!jis_str(v)) return false;
-    us s = us_slice(us_trim(sanitize_display(jstr(v))), 0, 128);
+    us s = truncate_string(us_trim(sanitize_display(jstr(v))), 128, US_EMPTY);
     if (!s.n) return false;
     *out = s;
     return true;
@@ -313,7 +313,7 @@ static bool external_usage(Ctx *ctx, Usage *u) {
         yyjson_arr_foreach(ms, idx, max, w) {
             if (u->nscoped >= 8) break;
             jv dn = jget(w, "display_name"), ut = jget(w, "utilization"), ra = jget(w, "resets_at");
-            us lab = jis_str(dn) ? us_slice(us_trim(sanitize_display(jstr(dn))), 0, 64) : US_EMPTY;
+            us lab = jis_str(dn) ? truncate_string(us_trim(sanitize_display(jstr(dn))), 64, US_EMPTY) : US_EMPTY;
             bool null_util = ut && yyjson_is_null(ut);
             double pct = null_util ? NAN : snapshot_percent(ut);
             if (!lab.n || (!null_util && isnan(pct))) continue;

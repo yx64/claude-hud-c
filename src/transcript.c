@@ -195,7 +195,7 @@ static double count(jv v) {
 
 bool sanitize_model(jv v, us *out) {
     if (!jis_str(v)) return false;
-    us s = us_slice(us_trim(sanitize_display(jstr(v))), 0, 80);
+    us s = truncate_string(us_trim(sanitize_display(jstr(v))), 80, US_EMPTY);
     if (!s.n) return false;
     *out = s;
     return true;
@@ -533,7 +533,7 @@ static void assistant(Parser *s, jv e, double at) {
     Transcript *r = s->r;
     if (!isnan(at)) r->last_assistant_at = at;
     jv adv = jget(e, "advisorModel");
-    if (jis_str(adv) && yyjson_get_len(adv)) r->advisor = us_slice(jstr(adv), 0, 64);
+    if (jis_str(adv) && yyjson_get_len(adv)) r->advisor = truncate_string(jstr(adv), 64, US_EMPTY);
     jv msg = jget(e, "message");
     us m;
     if (sanitize_model(jget(msg, "model"), &m) && !us_eq_c(m, "<synthetic>")) r->last_model = m;

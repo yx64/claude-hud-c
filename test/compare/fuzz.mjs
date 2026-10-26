@@ -29,10 +29,13 @@ const TEXT = [
   'multi\nline\tcommand  with   spaces', '\x1b[1m\x1b[0m',
   // long enough to be cut, with graphemes of several code units at every position
   '😀'.repeat(40), 'e\u0301'.repeat(40), 'a😀'.repeat(30), 'ab👍🏽'.repeat(20), '🇨🇳'.repeat(20), 'x'.repeat(19) + '😀' + 'y'.repeat(40),
+  // a grapheme of several code units straddling a cap: 32, 40, 64, 80, 128
+  'e'.repeat(31) + '😀', 's'.repeat(38) + '🇬🇧', 'A'.repeat(63) + '😀B', 'A'.repeat(79) + '😀B', 'E'.repeat(127) + '😀',
 ];
 const TOOL_NAMES = ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash', 'Skill', 'Task', 'Agent', 'TodoWrite', 'TaskCreate', 'TaskUpdate',
   'mcp__github__create_issue', 'mcp__a__b__c', 'mcp____x', 'mcp__srv__', 'WebSearch', 'PowerShell', 'mcp__中文__工具', 'X'];
-const MODELS = ['claude-opus-5-5', 'claude-sonnet-4-5-20250929', 'claude-haiku-4-5-20251001', 'claude-3-7-sonnet-20250219', 'gpt-5', '\x1b[1mweird\x1b[0m', 'claude-opus-4-1[1m]', '<synthetic>'];
+const MODELS = ['claude-opus-5-5', 'claude-sonnet-4-5-20250929', 'claude-haiku-4-5-20251001', 'claude-3-7-sonnet-20250219', 'gpt-5', '\x1b[1mweird\x1b[0m', 'claude-opus-4-1[1m]', '<synthetic>',
+  'm'.repeat(79) + '😀', 'x'.repeat(63) + '😀'];
 
 let clock = Date.parse('2026-09-20T08:00:00.000Z');
 const ids = [];
@@ -75,11 +78,11 @@ function block() {
     if (chance(0.7)) input.subject = pick(TEXT);
     if (chance(0.4)) input.description = pick(TEXT);
     if (chance(0.5)) input.status = pick(['pending', 'running', 'done', 'complete', 'x']);
-    if (chance(0.5)) input.taskId = chance(0.5) ? String(int(1, 5)) : pick([int(1, 5), 0, '']);
+    if (chance(0.5)) input.taskId = chance(0.5) ? String(int(1, 5)) : pick([int(1, 5), 0, '', 'a', 'b']);
   }
   if (name === 'TaskUpdate') {
-    input.taskId = chance(0.5) ? String(int(1, 6)) : pick([int(1, 6), '007', 'x']);
-    if (chance(0.7)) input.status = pick(['in_progress', 'completed', 'not_started']);
+    input.taskId = ids.length && chance(0.15) ? pick(ids) : chance(0.5) ? String(int(1, 6)) : pick([int(1, 6), '007', 'x', 'a', 'b']);
+    if (chance(0.7)) input.status = pick(['in_progress', 'completed', 'not_started', 'deleted', 'deleted']);
     if (chance(0.3)) input.subject = pick(TEXT);
   }
   return { type: 'tool_use', id, name, input: chance(0.03) ? pick([null, 'str', 5]) : input };
@@ -197,20 +200,20 @@ const DISPLAY = {
   usageBarEnabled: B, showResetLabel: B, usageCompact: B, showModelScopedUsage: B,
   showTools: B, showSkills: B, showMcp: B, toolNameMaxLength: [0, 1, 5, 20, 2.5], toolsMaxVisible: [0, 1, 4, 10], skillsMaxVisible: [0, 1, 4],
   showAgents: B, showAgentEffort: B, showTodos: B, showSessionName: B, showAuth: B, showAuthUser: B,
-  authUserLength: [0, 3, 8], showClaudeCodeVersion: B, showEffortLevel: B, effortFormat: ['full', 'symbol', 'text'],
+  authUserLength: [0, 3, 5, 8], showClaudeCodeVersion: B, showEffortLevel: B, effortFormat: ['full', 'symbol', 'text'],
   showPromptCache: B, showCacheHitRate: B, showSessionTokens: B, showOutputStyle: B, showMemoryUsage: B, showSpeed: B,
   showSessionStartDate: B, showLastResponseAt: B, showCompactions: B,
   contextWarningThreshold: [70, 0, 100, -5], contextCriticalThreshold: [85, 1], usageThreshold: [0, 50], sevenDayThreshold: [80, 0], environmentThreshold: [0, 20],
-  modelFormat: ['full', 'compact', 'short'], modelOverride: ['', 'Custom │ Model'], modelSource: ['stdin', 'transcript', 'auto'], showProvider: B,
-  providerName: ['', 'Prov', '  '], customLine: ['', 'custom | line 中文'], customLinePosition: ['first', 'last'],
+  modelFormat: ['full', 'compact', 'short'], modelOverride: ['', 'Custom │ Model', 'M'.repeat(79) + '😀'], modelSource: ['stdin', 'transcript', 'auto'], showProvider: B,
+  providerName: ['', 'Prov', '  ', 'P'.repeat(39) + '😀'], customLine: ['', 'custom | line 中文', 'C'.repeat(79) + '🇬🇧'], customLinePosition: ['first', 'last'],
   timeFormat: ['relative', 'absolute', 'both', 'elapsed', 'elapsedAndAbsolute'], hourCycle: ['auto', 'h11', 'h12', 'h23', 'h24'],
-  showClockSeconds: B, showAdvisor: B, advisorOverride: ['', 'claude-sonnet-4-6'], autoCompactWindow: [null, 300000, 1.5],
+  showClockSeconds: B, showAdvisor: B, advisorOverride: ['', 'claude-sonnet-4-6', 'A'.repeat(63) + '😀B', 'A'.repeat(79) + '😀'], autoCompactWindow: [null, 300000, 1.5],
   mergeGroups: [undefined, [], [['context', 'usage']], [['tools', 'agents', 'todos']], [['project', 'context'], ['usage', 'promptCache', 'environment', 'cacheHitRate']],
-    [['context', 'sessionTokens']]],
-  rightAlign: [[], ['usage'], ['todos', 'promptCache'], ['sessionTokens']],
+    [['context', 'sessionTokens']], [['context', 'usage', 'cost']], [['cost', 'sessionTokens']]],
+  rightAlign: [[], ['usage'], ['todos', 'promptCache'], ['sessionTokens'], ['cost']],
 };
 const ELEMENTS = ['project', 'addedDirs', 'context', 'usage', 'promptCache', 'cacheHitRate', 'memory', 'environment', 'tools', 'skills', 'mcp', 'agents', 'todos', 'sessionTime',
-  'sessionTokens'];
+  'sessionTokens', 'cost'];
 
 // An external usage snapshot for the case: valid, stale, broken, or with model-scoped windows.
 function usageSnapshot(now) {
@@ -255,7 +258,7 @@ function stdin(tp, cwd, now) {
   if (chance(0.8)) m.display_name = pick(['Opus 5.5', 'Sonnet 4.5 (1M context)', '', '  ', 'Claude Haiku 4.5', '中文模型', '\x1b[31mred\x1b[0m']);
   if (chance(0.9)) m.id = pick(['claude-opus-5-5[1m]', 'opusplan', 'us.anthropic.claude-sonnet-4-5-20250929-v1:0', 'claude-3-5-haiku@20241022', 'claude-fable-5-1', 'minimax-m2.7']);
   s.model = m;
-  if (chance(0.5)) s.version = pick(['2.1.295', '', '\x1b[2mx\x1b[0m', 'v'.repeat(40)]);
+  if (chance(0.5)) s.version = pick(['2.1.295', '', '\x1b[2mx\x1b[0m', 'v'.repeat(40), '2'.repeat(31) + '😀']);
   if (chance(0.4)) s.session_name = pick(TEXT);
   if (chance(0.4)) s.output_style = { name: pick(TEXT) };
   if (chance(0.8)) s.cost = { total_cost_usd: pick([0, 0.0049, 0.05, 0.12345, 1.005, 12.345, 999.995, -1]), total_duration_ms: pick([0, 59999, 60000, 3600000 * 5, -1]),
@@ -272,7 +275,7 @@ function stdin(tp, cwd, now) {
   }
   if (chance(0.5)) s.prompt_cache = { caching_observed: pick([true, false, 1]), warm: pick([true, false]), expires_at: sec + pick([-5, 30, 100, 250, 3000]),
     ttl: pick(['5m', '1h', undefined, 'x']), hit_ratio: pick([0, 0.5, 0.99999, 1.2, undefined]) };
-  if (chance(0.6)) s.effort = pick([{ level: 'high' }, { level: 'MAX ' }, { level: '' }, { level: 'weird' }, 'high', { level: 'ultracode' }]);
+  if (chance(0.6)) s.effort = pick([{ level: 'high' }, { level: 'MAX ' }, { level: '' }, { level: 'weird' }, 'high', { level: 'ultracode' }, { level: 'e'.repeat(31) + '😀' }]);
   if (chance(0.3)) s.workspace = { added_dirs: Array.from({ length: int(0, 7) }, () => pick([...DIRS, '', 'C:\\x\\', '\\\\'])) };
   return s;
 }
@@ -288,7 +291,7 @@ function sandbox(k) {
     fs.writeFileSync(path.join(cfg, 'settings.json'), JSON.stringify({ hooks: { A: [], B: [] }, mcpServers: { x: {} } }));
     fs.writeFileSync(path.join(proj, '.mcp.json'), JSON.stringify({ mcpServers: { p: {}, q: {} } }));
     fs.mkdirSync(path.join(proj, '.jj'));
-    fs.writeFileSync(path.join(cfg, '.claude.json'), JSON.stringify({ oauthAccount: { organizationType: 'claude_team_plan', organizationRateLimitTier: 'tier_5X', displayName: 'Someone 中文' } }));
+    fs.writeFileSync(path.join(cfg, '.claude.json'), JSON.stringify({ oauthAccount: { organizationType: 'claude_team_plan', organizationRateLimitTier: 'tier_5X', displayName: 'Some😀one 中文' } }));
   }
   return { proj, cfg, moved: path.join(workDir, `f${k}`, 'moved'), cache: path.join(workDir, `f${k}`, 'hud-cache'), usageIn: path.join(proj, 'usage-in.json'), usageOut: path.join(proj, 'usage-out.json') };
 }
@@ -315,7 +318,7 @@ async function worker(k) {
       const pathKey = Object.keys(env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH';
       env[pathKey] = `${fakeJj}${path.delimiter}${env[pathKey]}`;
       env.FAKE_JJ_OUT = pick(['abc12345\x1fmain\x1e2nd\x1f1\x1f0\n', 'abc12345\x1f\x1f0\x1f1\r\n', 'zz\x1f\x1f2\x1f0', 'a\x1fb\x1e\x1f1\x1f0', 'x\ny\x1f\x1f1\x1f0',
-        ` \x1b[31m${pick(TEXT)}\x1f${pick(TEXT)}\x1f1\x1f1`, 'q'.repeat(20000)]);
+        ` \x1b[31m${pick(TEXT)}\x1f${pick(TEXT)}\x1f1\x1f1`, 'q'.repeat(20000), `qpvuntsm\x1f${'x'.repeat(63)}🇬🇧\x1f0\x1f0`]);
       env.FAKE_JJ_EXIT = pick(['0', '0', '0', '1']);
     }
     const extra = [sb.usageOut];

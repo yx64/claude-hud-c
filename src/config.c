@@ -71,7 +71,7 @@ static int one_of(jv v, const char *const *names, size_t count, int def) {
 static double clamp100(jv v, double def) { return is_finite_num(v) ? fmax(0, fmin(100, jnum(v))) : def; }
 static double floor0(jv v, double def) { return is_finite_num(v) ? fmax(0, floor(jnum(v))) : def; }
 static double count(jv v, double def) { return is_integer(v) && jnum(v) >= 0 ? jnum(v) : def; }
-static us text(jv v, int max) { return jis_str(v) ? us_slice(sanitize_display(jstr(v)), 0, max) : US_EMPTY; }
+static us text(jv v, int max) { return jis_str(v) ? truncate_string(sanitize_display(jstr(v)), max, US_EMPTY) : US_EMPTY; }
 
 // usagePath: a leading ~ and ${VAR} expanded; unset variables are left as written.
 static us usage_path(jv v, us home) {

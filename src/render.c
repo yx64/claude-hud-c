@@ -468,7 +468,7 @@ static us format_context_value(ContextUse u, int mode) {
 // stdinText: sanitized, trimmed, bounded; false for undefined
 static bool stdin_text(jv v, int max, us *out) {
     if (!jis_str(v)) return false;
-    us s = us_slice(us_trim(sanitize_display(jstr(v))), 0, max);
+    us s = truncate_string(us_trim(sanitize_display(jstr(v))), max, US_EMPTY);
     if (!s.n) return false;
     *out = s;
     return true;
@@ -580,7 +580,7 @@ static us provider_label(void) {
 
 // effortInfo on a string: a level from stdin or from a subagent's transcript, with its symbol
 static bool effort_info(us value, us *level, us *symbol) {
-    us l = us_slice(us_trim(sanitize_display(value)), 0, 32);
+    us l = truncate_string(us_trim(sanitize_display(value)), 32, US_EMPTY);
     if (!l.n) return false;
     l = us_lower(l);
     static const char *const names[] = {"low", "medium", "high", "xhigh", "max"};
@@ -861,7 +861,7 @@ static int project_parts(bool expanded, us *out) {
     return out[0].n ? 1 : 0;
 }
 
-static us advisor_clean(us s) { return us_slice(sanitize_display(us_trim(s)), 0, 64); }
+static us advisor_clean(us s) { return truncate_string(us_trim(sanitize_display(s)), 64, US_EMPTY); }
 
 // The model families in ids, for prettify_advisor and short_model.
 static const us FAMILIES[] = {US_INIT("opus"), US_INIT("sonnet"), US_INIT("haiku")};
@@ -951,7 +951,7 @@ static us auth_part(void) {
     if (CF->d.show_auth_user && C->has_auth_user) {
         us u = C->auth_user;
         double max = CF->d.auth_user_length;
-        if (max > 0 && u.n > max) u = CAT(us_slice(u, 0, (int32_t)max), US("…"));
+        if (max > 0 && u.n > max) u = CAT(truncate_string(u, max, US_EMPTY), US("…"));
         parts[n++] = u;
     }
     return labeled(join(parts, n, US(" · ")));
@@ -1272,7 +1272,7 @@ static us environment_line(void) {
         us safe[64];
         int n = 0;
         for (int i = 0; i < tr->nmcp_err && n < 64; i++) {
-            us s = us_slice(us_trim(sanitize_display(tr->mcp_errors[i])), 0, 64);
+            us s = truncate_string(us_trim(sanitize_display(tr->mcp_errors[i])), 64, US_EMPTY);
             if (s.n) safe[n++] = s;
         }
         errors = c_critical(CAT(US("⚠ "), join(safe, n < 3 ? n : 3, US(", ")), n > 3 ? CAT(US(" +"), num(n - 3)) : US_EMPTY));

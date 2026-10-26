@@ -313,16 +313,7 @@ bool is_jj_repo(us cwd) {
     return false;
 }
 
-static us jj_label(us v) {  // sanitized, trimmed, at most 64 code points
-    us s = us_trim(sanitize_display(v));
-    int32_t i = 0;
-    for (int k = 0; k < 64 && i < s.n; k++) {
-        int32_t l;
-        us_cp_at(s, i, &l);
-        i += l;
-    }
-    return us_slice(s, 0, i);
-}
+static us jj_label(us v) { return truncate_string(us_trim(sanitize_display(v)), 64, US_EMPTY); }
 
 VcsStatus *jj_status(us cwd) {
     us dir, jj, out;
