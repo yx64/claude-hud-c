@@ -672,8 +672,8 @@ static int split_segments(us s, us *segs, int max) {
     return n;
 }
 
-static us format_project_path(us cwd, int levels) {
-    us safe = sanitize_display(cwd);
+// safe is the cwd already through sanitize_display.
+static us format_project_path(us safe, int levels) {
     us segs[256];
     int n = split_segments(safe, segs, 256);
     bool lead = safe.n && (safe.p[0] == '/' || safe.p[0] == '\\');
@@ -696,7 +696,7 @@ static us format_project_path(us cwd, int levels) {
 static bool next_segment(us s, int32_t *i, us *seg) {
     int32_t a = *i;
     while (a < s.n && (s.p[a] == '/' || s.p[a] == '\\')) a++;
-    if (a == s.n) return *i = a, false;
+    if (a == s.n) return false;
     int32_t b = a;
     while (b < s.n && s.p[b] != '/' && s.p[b] != '\\') b++;
     *seg = us_slice(s, a, b);
@@ -705,16 +705,18 @@ static bool next_segment(us s, int32_t *i, us *seg) {
 }
 
 // launchDirName: the launch directory's last segment, unless the path shown already holds it, cwd lying
-// inside it fewer than pathLevels segments down; both walked a segment at a time, with no list of segments.
-static us launch_dir_name(us cwd, jv launch_dir) {
+// inside it fewer than pathLevels segments down. here is the cwd already through sanitize_display. Walked
+// rather than split, so unlike split_segments there is no cap on the number of segments.
+static us launch_dir_name(us here, jv launch_dir) {
     if (!CF->path_levels || !jis_str(launch_dir)) return US_EMPTY;
-    us launch = sanitize_display(jstr(launch_dir)), here = sanitize_display(cwd), a, b, last = US_EMPTY;
+    us launch = sanitize_display(jstr(launch_dir)), a, b, last = US_EMPTY;
     int32_t i = 0, j = 0;
     bool inside = true;
     while (next_segment(launch, &i, &a)) {
         last = a;
         if (inside) inside = next_segment(here, &j, &b) && us_eq(a, b);
     }
+    if (!last.n) return US_EMPTY;
     if (inside) {
         int below = 0;
         while (below < CF->path_levels && next_segment(here, &j, &b)) below++;
@@ -871,10 +873,11 @@ static int project_parts(bool expanded, us *out) {
     if (CF->d.show_project && jtruthy(cwd)) {
         if (!jis_str(cwd)) UNSUPPORTED("non-string cwd");
         else {
-            us path = format_project_path(jstr(cwd), CF->path_levels);
-            us launch = CF->d.show_launch_dir ? launch_dir_name(jstr(cwd), sget("workspace", "project_dir")) : US_EMPTY;
+            us dir = jstr(cwd), safe = sanitize_display(dir);
+            us path = format_project_path(safe, CF->path_levels);
+            us launch = CF->d.show_launch_dir ? launch_dir_name(safe, sget("workspace", "project_dir")) : US_EMPTY;
             us text = c_project(launch.n ? CAT(launch, US(" › "), path) : path);
-            project = expanded ? hyperlink(file_href(jstr(cwd)), text) : text;
+            project = expanded ? hyperlink(file_href(dir), text) : text;
         }
     }
     if (expanded && CF->d.show_added_dirs && !CF->d.added_dirs_line) {
