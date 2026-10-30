@@ -262,6 +262,7 @@ void load_config(Config *c, us claude_dir, us home) {
 #define B(field, key, def) d->field = boolean(get(display, key), def)
     B(show_model, "showModel", true);
     B(show_project, "showProject", true);
+    B(show_launch_dir, "showLaunchDir", false);
     B(show_added_dirs, "showAddedDirs", true);
     d->added_dirs_line = ONE_OF(get(display, "addedDirsLayout"), inline_line, 0) == 1;
     B(show_context_bar, "showContextBar", true);

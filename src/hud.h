@@ -85,7 +85,7 @@ typedef struct {
     } git;
     struct { bool enabled, show_dirty, show_conflicts; } jj;
     struct {
-        bool show_model, show_project, show_added_dirs, added_dirs_line, show_context_bar;
+        bool show_model, show_project, show_launch_dir, show_added_dirs, added_dirs_line, show_context_bar;
         int context_value;
         bool show_config_counts, show_cost, show_routed_cost, show_daily_cost, show_weekly_cost, show_duration, show_speed;
         bool show_token_breakdown, show_usage, usage_remaining, usage_bar, show_reset_label, usage_compact, show_model_scoped, usage_pace;

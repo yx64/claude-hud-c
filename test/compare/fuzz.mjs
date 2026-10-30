@@ -194,7 +194,7 @@ function subagents(tp) {
 
 const B = [true, false];
 const DISPLAY = {
-  showModel: B, showProject: B, showAddedDirs: B, addedDirsLayout: ['inline', 'line'], showContextBar: B,
+  showModel: B, showProject: B, showLaunchDir: B, showAddedDirs: B, addedDirsLayout: ['inline', 'line'], showContextBar: B,
   contextValue: ['percent', 'tokens', 'remaining', 'both'], showConfigCounts: B, showCost: B, showRoutedCost: B, showDailyCost: B, showWeeklyCost: B,
   showDuration: B, showTokenBreakdown: B, showUsage: B, usageValue: ['percent', 'remaining'], usagePace: B,
   usageBarEnabled: B, showResetLabel: B, usageCompact: B, showModelScopedUsage: B,
@@ -277,6 +277,11 @@ function stdin(tp, cwd, now) {
     ttl: pick(['5m', '1h', undefined, 'x']), hit_ratio: pick([0, 0.5, 0.99999, 1.2, undefined]) };
   if (chance(0.6)) s.effort = pick([{ level: 'high' }, { level: 'MAX ' }, { level: '' }, { level: 'weird' }, 'high', { level: 'ultracode' }, { level: 'e'.repeat(31) + '😀' }]);
   if (chance(0.3)) s.workspace = { added_dirs: Array.from({ length: int(0, 7) }, () => pick([...DIRS, '', 'C:\\x\\', '\\\\'])) };
+  if (chance(0.6)) {
+    const c = typeof s.cwd === 'string' ? s.cwd : '';
+    s.workspace = { ...s.workspace, project_dir: pick([c, c + path.sep, path.dirname(c), path.dirname(path.dirname(c)), path.dirname(path.dirname(path.dirname(c))),
+      c + 'x', path.join(path.dirname(c), 'other'), c + path.sep + '.', ...DIRS, '', '/', '\\', 5, null, c + '\x1b[31m\x07']) };
+  }
   return s;
 }
 

@@ -692,6 +692,37 @@ static us format_project_path(us cwd, int levels) {
     return j.n ? j : safe;
 }
 
+// The next segment of s at or after *i, segments being split by / and \ with empty ones skipped.
+static bool next_segment(us s, int32_t *i, us *seg) {
+    int32_t a = *i;
+    while (a < s.n && (s.p[a] == '/' || s.p[a] == '\\')) a++;
+    if (a == s.n) return *i = a, false;
+    int32_t b = a;
+    while (b < s.n && s.p[b] != '/' && s.p[b] != '\\') b++;
+    *seg = us_slice(s, a, b);
+    *i = b;
+    return true;
+}
+
+// launchDirName: the launch directory's last segment, unless the path shown already holds it, cwd lying
+// inside it fewer than pathLevels segments down; both walked a segment at a time, with no list of segments.
+static us launch_dir_name(us cwd, jv launch_dir) {
+    if (!CF->path_levels || !jis_str(launch_dir)) return US_EMPTY;
+    us launch = sanitize_display(jstr(launch_dir)), here = sanitize_display(cwd), a, b, last = US_EMPTY;
+    int32_t i = 0, j = 0;
+    bool inside = true;
+    while (next_segment(launch, &i, &a)) {
+        last = a;
+        if (inside) inside = next_segment(here, &j, &b) && us_eq(a, b);
+    }
+    if (inside) {
+        int below = 0;
+        while (below < CF->path_levels && next_segment(here, &j, &b)) below++;
+        if (below < CF->path_levels) return US_EMPTY;
+    }
+    return last;
+}
+
 // Linked added-dir names, capped at five; prefix is the inline "+".
 static us added_dirs(us prefix, us joiner) {
     jv arr = sget("workspace", "added_dirs");
@@ -840,7 +871,9 @@ static int project_parts(bool expanded, us *out) {
     if (CF->d.show_project && jtruthy(cwd)) {
         if (!jis_str(cwd)) UNSUPPORTED("non-string cwd");
         else {
-            us text = c_project(format_project_path(jstr(cwd), CF->path_levels));
+            us path = format_project_path(jstr(cwd), CF->path_levels);
+            us launch = CF->d.show_launch_dir ? launch_dir_name(jstr(cwd), sget("workspace", "project_dir")) : US_EMPTY;
+            us text = c_project(launch.n ? CAT(launch, US(" › "), path) : path);
             project = expanded ? hyperlink(file_href(jstr(cwd)), text) : text;
         }
     }

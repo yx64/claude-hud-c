@@ -256,6 +256,7 @@ macro(hud_placeholders dir transcript)
     file(TO_NATIVE_PATH "${_v}" HUD_NATIVE_${_k})
     string(REPLACE "\\" "\\\\" HUD_JSON_${_k} "${HUD_NATIVE_${_k}}")
   endforeach()
+  file(TO_CMAKE_PATH "${dir}" HUD_SLASH_WORK)
   if(CMAKE_HOST_WIN32)
     set(HUD_JSON_SEP "\\\\")
   else()
@@ -338,13 +339,15 @@ endfunction()
 
 # Writes the canonical form of an output file to <Dst>, the form expected files hold: every carriage
 # return as @x0d@ (so a checkout that converts line ends cannot touch it) and the work directory as
-# @WORKURL@ (its file URL) or @WORK@. Sets <Problem> to why the output has no canonical form, or empty:
+# @WORKURL@ (its file URL) or @WORK@, the latter also where it is written with forward slashes: on Windows
+# upstream joins the cwd's segments with / for pathLevels full, so @WORK@/proj stands on every platform and
+# one expected file holds. Sets <Problem> to why the output has no canonical form, or empty:
 # it holds a NUL, which the form cannot carry, or the work directory in a form not replaced. Needs
 # hud_placeholders in the caller's scope.
 function(hud_canon src dst problem)
   get_filename_component(d "${dst}" DIRECTORY)
   file(MAKE_DIRECTORY "${d}")
-  execute_process(COMMAND ${HUD_BYTES} canon ${src} ${dst} "WORKURL=${HUD_URL_WORK}" "WORK=${HUD_JSON_WORK}" "WORK=${HUD_NATIVE_WORK}"
+  execute_process(COMMAND ${HUD_BYTES} canon ${src} ${dst} "WORKURL=${HUD_URL_WORK}" "WORK=${HUD_JSON_WORK}" "WORK=${HUD_NATIVE_WORK}" "WORK=${HUD_SLASH_WORK}"
                   RESULT_VARIABLE code ERROR_VARIABLE err)
   set(p "")
   if(code EQUAL 3)
