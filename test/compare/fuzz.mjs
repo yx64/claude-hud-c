@@ -249,7 +249,9 @@ function config(sb, now) {
   return c;
 }
 
-const DIRS = ['C:\\测试 目录\\é#?%[x]', 'C:\\Users\\a b', 'D:\\', 'C:\\a\\..\\b\\.\\c\\', 'C:\\' + 'n'.repeat(40), 'E:\\x\\很长很长很长很长很长很长很长的名字'];
+const DIRS = ['C:\\测试 目录\\é#?%[x]', 'C:\\Users\\a b', 'D:\\', 'C:\\a\\..\\b\\.\\c\\', 'C:\\' + 'n'.repeat(40), 'E:\\x\\很长很长很长很长很长很长很长的名字',
+  // Deep enough to pass any fixed cap on segments; drive-absolute on Windows, where the port reports any other path unsupported
+  (process.platform === 'win32' ? 'C:/r' : '/r') + '/d'.repeat(300) + '/end', 'C:' + '\\d//'.repeat(300) + '\\end'];
 
 function stdin(tp, cwd, now) {
   const sec = Math.floor(now / 1000);

@@ -661,52 +661,75 @@ static us model_badge(void) {
     return c_model(CAT(US("["), text, US("]")));
 }
 
-static int split_segments(us s, us *segs, int max) {
-    int n = 0;
-    for (int32_t i = 0; i <= s.n && n < max;) {
-        int32_t j = i;
-        while (j < s.n && s.p[j] != '/' && s.p[j] != '\\') j++;
-        if (j > i) segs[n++] = us_slice(s, i, j);
-        i = j + 1;
-    }
-    return n;
-}
-
-// safe is the cwd already through sanitize_display.
-static us format_project_path(us safe, int levels) {
-    us segs[256];
-    int n = split_segments(safe, segs, 256);
-    bool lead = safe.n && (safe.p[0] == '/' || safe.p[0] == '\\');
-    if (levels != 0) {
-        int from = n - levels > 0 ? n - levels : 0;
-        us shown = join(segs + from, n - from, US("/"));
-        return shown.n ? shown : lead ? US("/") : safe;
-    }
-    if (safe.n >= 2 && lead && (safe.p[1] == '/' || safe.p[1] == '\\')) return n ? CAT(US("//"), join(segs, n, US("/"))) : US("//");
-    if (safe.n >= 3 && ((safe.p[0] | 32) >= 'a' && (safe.p[0] | 32) <= 'z') && safe.p[1] == ':' && (safe.p[2] == '/' || safe.p[2] == '\\')) {
-        us j = join(segs, n, US("/"));
-        return n == 1 ? CAT(j, US("/")) : j;
-    }
-    if (lead) return n ? CAT(US("/"), join(segs, n, US("/"))) : US("/");
-    us j = join(segs, n, US("/"));
-    return j.n ? j : safe;
-}
+// / or \, on every platform: paths are split as upstream splits them, not as the system does (is_sep).
+static bool is_slash(uint16_t c) { return c == '/' || c == '\\'; }
 
 // The next segment of s at or after *i, segments being split by / and \ with empty ones skipped.
 static bool next_segment(us s, int32_t *i, us *seg) {
     int32_t a = *i;
-    while (a < s.n && (s.p[a] == '/' || s.p[a] == '\\')) a++;
+    while (a < s.n && is_slash(s.p[a])) a++;
     if (a == s.n) return false;
     int32_t b = a;
-    while (b < s.n && s.p[b] != '/' && s.p[b] != '\\') b++;
-    *seg = us_slice(s, a, b);
+    while (b < s.n && !is_slash(s.p[b])) b++;
+    *seg = (us){s.p + a, b - a};
     *i = b;
     return true;
 }
 
+// Where the last k segments of s begin, s.n when it has none. Found from the end, so only those are looked at.
+static int32_t last_segments_at(us s, int k) {
+    int32_t i = s.n, at = s.n;
+    while (k-- > 0) {
+        while (i > 0 && is_slash(s.p[i - 1])) i--;
+        if (!i) break;
+        while (i > 0 && !is_slash(s.p[i - 1])) i--;
+        at = i;
+    }
+    return at;
+}
+
+// The segments of s from at on, joined by "/", and in *n how many. Where a single "/" already stands between
+// each two, the result is that part of s rather than a copy, as for most paths outside Windows.
+static us join_segments(us s, int32_t at, int *n) {
+    us seg;
+    int32_t i = at, from = 0, end = 0;
+    bool plain = true;
+    int count = 0;
+    while (next_segment(s, &i, &seg)) {
+        int32_t a = (int32_t)(seg.p - s.p);
+        if (!count) from = a;
+        else if (a != end + 1 || s.p[end] != '/') plain = false;
+        end = i, count++;
+    }
+    *n = count;
+    if (!count) return US_EMPTY;
+    if (plain) return (us){s.p + from, end - from};
+    sb b = {0};
+    i = at;
+    for (int k = 0; next_segment(s, &i, &seg); k++) {
+        if (k) sb_ch(&b, '/');
+        sb_us(&b, seg);
+    }
+    return sb_done(&b);
+}
+
+// safe is the cwd already through sanitize_display.
+static us format_project_path(us safe, int levels) {
+    bool lead = safe.n && is_slash(safe.p[0]);
+    int n;
+    if (levels != 0) {
+        us shown = join_segments(safe, last_segments_at(safe, levels), &n);
+        return n ? shown : lead ? US("/") : safe;
+    }
+    us j = join_segments(safe, 0, &n);
+    if (safe.n >= 2 && lead && is_slash(safe.p[1])) return n ? CAT(US("//"), j) : US("//");
+    if (safe.n >= 3 && ((safe.p[0] | 32) >= 'a' && (safe.p[0] | 32) <= 'z') && safe.p[1] == ':' && is_slash(safe.p[2])) return n == 1 ? CAT(j, US("/")) : j;
+    if (lead) return !n ? US("/") : j.p == safe.p + 1 && j.n == safe.n - 1 ? safe : CAT(US("/"), j);
+    return n ? j : safe;
+}
+
 // launchDirName: the launch directory's last segment, unless the path shown already holds it, cwd lying
-// inside it fewer than pathLevels segments down. here is the cwd already through sanitize_display. Walked
-// rather than split, so unlike split_segments there is no cap on the number of segments.
+// inside it fewer than pathLevels segments down. here is the cwd already through sanitize_display.
 static us launch_dir_name(us here, jv launch_dir) {
     if (!CF->path_levels || !jis_str(launch_dir)) return US_EMPTY;
     us launch = sanitize_display(jstr(launch_dir)), a, b, last = US_EMPTY;
@@ -735,9 +758,9 @@ static us added_dirs(us prefix, us joiner) {
     jv v;
     yyjson_arr_foreach(arr, idx, max, v) {
         if (!jis_str(v) || !yyjson_get_len(v) || n >= 256) continue;
-        us dir = jstr(v), segs[256];
-        int ns = split_segments(dir, segs, 256);
-        us name = sanitize_display(ns ? segs[ns - 1] : dir);
+        us dir = jstr(v), seg;
+        int32_t at = last_segments_at(dir, 1);
+        us name = sanitize_display(next_segment(dir, &at, &seg) ? seg : dir);
         name = truncate_string(name, 24, US("…"));
         if (name.n) dirs[n] = dir, names[n++] = name;
     }
