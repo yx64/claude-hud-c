@@ -310,7 +310,7 @@ static us jj_label(us v) { return truncate_string(us_trim(sanitize_display(v)), 
 
 VcsStatus *jj_status(us cwd) {
     us dir, jj, out;
-    if (!real_directory(cwd, &dir) || !os_find_jj(dir, &jj)) return nullptr;
+    if (!real_directory(cwd, &dir) || !os_find_jj(&jj)) return nullptr;
     static const char *const args[] = {
         "--ignore-working-copy", "--at-operation=@", "--no-pager", "log", "-r", "@", "--no-graph", "--color", "never", "-T",
         "change_id.shortest(8) ++ \"\\x1f\" ++ self.local_bookmarks().map(|bookmark| bookmark.name()).join(\"\\x1e\") ++ \"\\x1f\" ++ "

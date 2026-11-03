@@ -88,6 +88,6 @@ enum { RUN_OK, RUN_FAILED, RUN_TIMEOUT };
 // (null-terminated NAME=value entries, replacing any of the same name); the child and anything it
 // starts end when it overruns timeout_ms. RUN_OK only for exit code 0 within max_out bytes.
 int os_run(us exe, const char *const *args, us cwd, const char *const *env, uint32_t timeout_ms, size_t max_out, us *out);
-bool os_find_git(us *out);         // git-runner.js: what runGit starts
+bool os_find_git(us *out);  // collector.mjs: what runGit starts
 extern const uint32_t OS_GIT_EXTRA_MS;  // and the start-up time it adds to git's timeout
-bool os_find_jj(us cwd, us *out);  // what execFile('jj', ...) starts from cwd
+bool os_find_jj(us *out);   // collector.mjs: what the jj probe starts

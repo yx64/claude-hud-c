@@ -643,9 +643,9 @@ int os_run(us exe, const char *const *args, us cwd, const char *const *env, uint
     return result;
 }
 
-// resolveWindowsGitExecutable: git from absolute PATH entries only, so a git planted in the
-// repository is never picked up.
-bool os_find_git(us *out) {
+// resolveWindowsExecutable: <name>.exe from absolute PATH entries only. Windows looks for a bare program
+// name in the folder it runs in before PATH, and that folder is the user's repository.
+static bool find_exe(us name, us *out) {
     us path = env_get("PATH");
     for (int32_t i = 0; i <= path.n && path.n;) {
         int32_t j = us_find_ch(path, ';', i);
@@ -655,7 +655,7 @@ bool os_find_git(us *out) {
         if (e.n >= 2 && e.p[0] == '"' && e.p[e.n - 1] == '"') e = us_slice(e, 1, e.n - 1);
         if (!e.n || !path_is_absolute(e)) continue;
         us real;
-        if (!real_path(path_join(e, US("git.exe")), &real)) continue;
+        if (!real_path(path_join(e, name), &real)) continue;
         fstat_t st = stat_path(real);
         if (st.ok && st.is_file) {
             *out = real;
@@ -665,32 +665,10 @@ bool os_find_git(us *out) {
     return false;
 }
 
+bool os_find_git(us *out) { return find_exe(US("git.exe"), out); }
+
 // runGit gives the worker it starts git through this long for its own start.
 const uint32_t OS_GIT_EXTRA_MS = 1500;
 const bool OS_FILE_URL_RAW = true;
 
-// libuv's search for a bare name: the child's cwd first, then PATH, as .com then .exe
-bool os_find_jj(us cwd, us *out) {
-    us path = env_get("PATH");
-    us dirs[256];
-    int nd = 0;
-    dirs[nd++] = cwd;
-    for (int32_t i = 0; i <= path.n && path.n && nd < 256;) {
-        int32_t j = us_find_ch(path, ';', i);
-        if (j < 0) j = path.n;
-        us e = us_slice(path, i, j);
-        i = j + 1;
-        if (e.n >= 2 && e.p[0] == '"' && e.p[e.n - 1] == '"') e = us_slice(e, 1, e.n - 1);
-        if (e.n && path_is_absolute(e)) dirs[nd++] = e;
-    }
-    for (int d = 0; d < nd; d++)
-        for (int x = 0; x < 2; x++) {
-            us c = path_join(dirs[d], x ? US("jj.exe") : US("jj.com"));
-            fstat_t st = stat_path(c);
-            if (st.ok && st.is_file) {
-                *out = c;
-                return true;
-            }
-        }
-    return false;
-}
+bool os_find_jj(us *out) { return find_exe(US("jj.exe"), out); }
