@@ -324,8 +324,8 @@ async function worker(k) {
       COLUMNS: String(int(1, 250)) };
     if (chance(0.1)) delete env.COLUMNS;
     // Either base URL may be no URL at all, which leaves the other to decide.
-    for (const k of ['ANTHROPIC_BASE_URL', 'ANTHROPIC_API_BASE_URL'])
-      if (chance(0.1)) env[k] = pick(['not a url', ' ', 'https://api.minimax.io/anthropic/', 'https://api.minimaxi.com/anthropic', 'http://localhost:8080/v1', 'https://example.com']);
+    for (const name of ['ANTHROPIC_BASE_URL', 'ANTHROPIC_API_BASE_URL'])
+      if (chance(0.1)) env[name] = pick(['not a url', ' ', 'https://api.minimax.io/anthropic/', 'https://api.minimaxi.com/anthropic', 'http://localhost:8080/v1', 'https://example.com']);
     // State an older release left beside data/, which a refresh that needs it moves in.
     const old = [];
     const plugin = path.join(sb.cfg, 'plugins', 'claude-hud');
