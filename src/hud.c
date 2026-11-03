@@ -110,7 +110,7 @@ static bool has_extra_cmd(void) {
     return false;
 }
 
-static void run(const char *buf, size_t n, sb *out) {
+static void run(const char *buf, size_t n, sb *out, us *tail) {
     if (hud_disabled()) return;
     if (!init_locale()) UNSUPPORTED("locale or time zone not reproduced");
     Ctx ctx = {.now = now_ms()};
@@ -160,6 +160,7 @@ static void run(const char *buf, size_t n, sb *out) {
     ctx.width = cfg.force_max_width && cfg.max_width >= 0 ? cfg.max_width : ctx.columns >= 0 ? ctx.columns : cfg.max_width;
     ctx.bar_width = ctx.columns < 0 || ctx.columns >= 100 ? 10 : ctx.columns >= 60 ? 6 : 4;
     render(&ctx, out);
+    *tail = problem_line();
 }
 
 #if defined(HUD_C_TRACE)
@@ -186,7 +187,8 @@ int hud_main(void) {
     write_file(path_join(capture, name), us_utf8(buf, n), 0, WRITE_NEW);
 #endif
     sb out = {0};
-    run(buf, n, &out);
+    us tail = US_EMPTY;
+    run(buf, n, &out, &tail);
 #if defined(HUD_C_TEST)
     // The comparison scripts count these separately: the output may differ from upstream.
     if (g_unsupported) {
@@ -196,8 +198,10 @@ int hud_main(void) {
         return 3;
     }
 #else
+    // On the last rendered line: the problem line is cut to the terminal width with its ending kept.
     if (out.n) append_run_time(&out);
 #endif
+    sb_us(&out, tail);
     size_t len;
     char *u8 = us_to_utf8(sb_done(&out), &len);
     os_write_out(u8, len);

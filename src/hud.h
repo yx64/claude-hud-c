@@ -170,6 +170,7 @@ void output_speed(Ctx *ctx);
 bool native_cost(Ctx *ctx, double *out);
 
 void render(Ctx *ctx, sb *out);
+us problem_line(void);  // after render: the line main.ts appends for a config problem, else nothing
 int shown_agents(Transcript *t, double now, Agent **out);  // activity.js shownAgents: at most three
 double js_round(double x);
 double to_percent(double v);  // rounded, then clamped to 0..100

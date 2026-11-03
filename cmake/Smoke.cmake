@@ -4,8 +4,11 @@
 # report (test/common.cmake), group smoke:
 #   test-build           the test build exits 0; exit 3 (input it does not reproduce exactly) skips the
 #                        comparison with a warning instead;
-#   release              the release build exits 0, shows the model and ends its last line with the run time;
+#   release              the release build exits 0, shows the model and ends its last line with the run time, or
+#                        the line before a config problem line;
 #   release-equals-test  with the run time taken off, the release build equals the test build at the same moment;
+#   problem-line         with a config value it cannot use, the release build ends with the problem line, the run
+#                        time on the line before it, so cutting the problem line to the width keeps its ending;
 #   trace                a trace build, when given, writes its trace line and its capture file beside itself.
 # Two runs can straddle a tick of a displayed duration, so the comparison is retried twice before it fails.
 # Each run works in a fresh directory: under WORK when given, else under the build directory's test-work.
@@ -75,7 +78,7 @@ file(WRITE ${stdin} "{\"session_id\":\"smoke\",\"transcript_path\":\"${transcrip
 # The ledger is put back after every run, so each run starts from the same state. A refresh still running after
 # HUD_RUN_TIMEOUT is hung; execute_process ends it and reports a timeout as its result, which fails the check
 # that reads it.
-set(ledger ${CONFIG_DIR}/plugins/claude-hud/daily-cost.json)
+set(ledger ${CONFIG_DIR}/plugins/claude-hud/data/daily-cost.json)
 function(refresh exe out_var code_var)
   set(had_ledger FALSE)
   if(EXISTS ${ledger})
@@ -96,7 +99,7 @@ function(refresh exe out_var code_var)
 endfunction()
 
 string(ASCII 27 esc)
-set(run_time " ${esc}\\[32m[0-9]+(ms|µs)${esc}\\[0m\n$")
+set(run_time " ${esc}\\[32m[0-9]+(ms|µs)${esc}\\[0m\n(claude-hud: [^\n]*\n)?$")
 
 refresh(${test} t0 t0_code)
 set(compare FALSE)
@@ -126,7 +129,7 @@ if(compare)
   foreach(try 1 2 3)
     refresh(${release} a a_code)
     refresh(${test} b b_code)
-    string(REGEX REPLACE "${run_time}" "\n" a "${a}")
+    string(REGEX REPLACE "${run_time}" "\n\\2" a "${a}")
     if(a_code EQUAL 0 AND b_code EQUAL 0 AND a STREQUAL b)
       set(same TRUE)
       break()
@@ -139,6 +142,18 @@ if(compare)
     hud_fail(release-equals-test "the release build (run time taken off) differs from the test build, exits ${a_code} and ${b_code}"
              "${d}\n     (expected: test build, actual: release build)")
   endif()
+endif()
+
+set(good_config ${CONFIG_DIR})
+set(CONFIG_DIR ${work}/claude-problem)
+file(WRITE ${CONFIG_DIR}/plugins/claude-hud/config.json [=[{"gitStatus":{"enabled":"no"}}]=])
+refresh(${release} p p_code)
+set(CONFIG_DIR ${good_config})
+hud_visible("${p}" p_shown)
+if(p_code EQUAL 0 AND p MATCHES " ${esc}\\[32m[0-9]+(ms|µs)${esc}\\[0m\nclaude-hud: [^\n]*\\. Type /hud to fix it\\.\n$")
+  hud_pass(problem-line)
+else()
+  hud_fail(problem-line "exited ${p_code}, or the output does not end with the problem line after the run time" "\n     output ${p_shown}")
 endif()
 
 if(DEFINED TRACE)

@@ -1928,16 +1928,15 @@ static int compact_lines(us *lines) {
 // ---- main.ts problemLine: a config problem is one line ending in /hud, fitted to the terminal; when it
 // cannot fit, the problem is cut, never the way to fix it ----
 
-static void problem_line(sb *out) {
-    if (!CF->nproblems) return;
+us problem_line(void) {
+    if (!CF->nproblems) return US_EMPTY;
     us line = CAT(US("claude-hud: "), CF->problem);
     if (CF->nproblems > 1) line = CAT(line, US(" (and "), us_int(CF->nproblems - 1), US(" more)"));
     us fix = US(". Type /hud to fix it.");
     int w = C->columns;
     if (w > 0 && visible_width(CAT(line, fix)) > w) line = truncate_to_width(CAT(truncate_to_width(line, w - fix.n > 1 ? w - fix.n : 1), fix), w);
     else line = CAT(line, fix);
-    sb_us(out, line);
-    sb_ch(out, '\n');
+    return CAT(line, US("\n"));
 }
 
 void render(Ctx *ctx, sb *out) {
@@ -1963,5 +1962,4 @@ void render(Ctx *ctx, sb *out) {
             a = nl + 1;
         }
     }
-    problem_line(out);
 }
