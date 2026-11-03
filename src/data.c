@@ -291,9 +291,12 @@ static double snapshot_date(jv v) {
 
 static double snapshot_percent(jv v) { return is_finite_num(v) ? js_round(fmin(100, fmax(0, jnum(v)))) : NAN; }
 
+// collector.mjs readText: a regular file of at most 1 MiB.
+static bool snapshot_file(fstat_t st) { return st.ok && st.is_file && st.size <= 1024 * 1024; }
+
 static bool external_usage(Ctx *ctx, Usage *u) {
     us p = ctx->cfg->d.external_usage_path;
-    if (!p.n || !path_is_absolute(p)) return false;
+    if (!p.n || !path_is_absolute(p) || !snapshot_file(stat_path(p))) return false;
     jv s = read_json_file(p);
     if (!s || yyjson_is_null(s)) return false;
     double updated = snapshot_date(jget(s, "updated_at"));
@@ -356,7 +359,7 @@ static void write_snapshot(Ctx *ctx, Usage *u) {
     if (!ds.ok || !ds.is_dir) return;
     // shouldWrite: the values changed, or the snapshot is older than the throttle
     fstat_t st = stat_path(path);
-    bool write = !st.ok || ctx->now - st.mtime_ms > 30000;
+    bool write = !snapshot_file(st) || ctx->now - st.mtime_ms > 30000;
     if (!write) {
         jv cur = read_json_file(path);
         if (!jis_obj(cur)) write = true;
@@ -406,12 +409,12 @@ static void write_snapshot(Ctx *ctx, Usage *u) {
 
 // main(): stdin's usage, the snapshot written from it, and resolveUsage on top.
 void gather_usage(Ctx *ctx) {
-    Usage su;
+    Usage su, ex;
     bool have = stdin_usage(ctx, &su);
+    // Read before this refresh writes one, as the launcher reads it before the logic runs and writes after.
+    bool hex = ctx->cfg->d.show_usage && ctx->cfg->d.external_usage_path.n && external_usage(ctx, &ex);
     if (ctx->cfg->d.external_usage_write_path.n && have) write_snapshot(ctx, &su);
     if (!ctx->cfg->d.show_usage) return;
-    Usage ex;
-    bool hex = ctx->cfg->d.external_usage_path.n && external_usage(ctx, &ex);
     if (!have || !hex) {
         if (have) ctx->usage = su, ctx->has_usage = true;
         else if (hex) ctx->usage = ex, ctx->has_usage = true;
