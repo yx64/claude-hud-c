@@ -615,7 +615,7 @@ static us format_effort(us level, us symbol) {
     return CF->d.effort_format == EF_TEXT || !symbol.n ? level : CAT(symbol, US(" "), level);
 }
 
-// ---- utils/hyperlinks.js: pathToFileURL(path.resolve(p)), then new URL() ----
+// ---- utils/hyperlinks.js: pathToFileURL(path.resolve(p)), then new URL(), and on Windows rawNonAscii ----
 
 static us file_href(us path) {
     sb b = {0};
@@ -626,7 +626,12 @@ static us file_href(us path) {
     // A backslash is left only where it is a file name character, which pathToFileURL encodes.
     for (size_t i = 0; i < n; i++) {
         uint8_t c = (uint8_t)u8[i];
-        if (c <= 0x20 || c >= 0x7F || strchr("\"#%<>?[\\]^`{|}~", c)) {
+        if (c >= 0x80 && OS_FILE_URL_RAW) {
+            size_t j = i;
+            while (j < n && (uint8_t)u8[j] >= 0x80) j++;
+            sb_us(&b, sanitize_display(us_utf8(u8 + i, j - i)));
+            i = j - 1;
+        } else if (c <= 0x20 || c >= 0x7F || strchr("\"#%<>?[\\]^`{|}~", c)) {
             sb_ch(&b, '%');
             sb_ch(&b, (uint16_t)hex[c >> 4]);
             sb_ch(&b, (uint16_t)hex[c & 15]);

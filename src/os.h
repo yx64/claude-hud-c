@@ -77,6 +77,9 @@ bool path_is_absolute(us p);
 us dir_of(us p);           // path.dirname of a resolved path
 us path_key(us p);         // the form two paths are compared in: folded where the platform folds case
 us file_url_path(us resolved);  // the path part of pathToFileURL, before percent-encoding
+// Whether a file: URL carries non-ASCII raw: Windows decodes its %XX escapes with the ANSI code page, not
+// UTF-8, so an encoded non-ASCII path opens nothing there.
+extern const bool OS_FILE_URL_RAW;
 
 // ---- child processes ----
 

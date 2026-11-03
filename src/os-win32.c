@@ -667,6 +667,7 @@ bool os_find_git(us *out) {
 
 // runGit gives the worker it starts git through this long for its own start.
 const uint32_t OS_GIT_EXTRA_MS = 1500;
+const bool OS_FILE_URL_RAW = true;
 
 // libuv's search for a bare name: the child's cwd first, then PATH, as .com then .exe
 bool os_find_jj(us cwd, us *out) {

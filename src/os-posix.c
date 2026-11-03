@@ -649,6 +649,7 @@ bool os_find_git(us *out) {
 }
 
 const uint32_t OS_GIT_EXTRA_MS = 0;
+const bool OS_FILE_URL_RAW = false;
 
 bool os_find_jj(us cwd, us *out) {
     *out = US("jj");
