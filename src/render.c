@@ -548,8 +548,9 @@ static us format_model_name(us name) {
 
 static bool url_ch(uint16_t c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'); }
 
-// Whether new URL() takes s: 0 no (there is no scheme), 1 yes (http or https, a plain host, an optional
-// port), 2 only a URL parser can tell.
+// Whether new URL() takes s: 0 no (there is no scheme, or the port is past 65535), 1 yes (http or https, a
+// plain host, an optional port), 2 only a URL parser can tell (a host whose last label is a number goes to
+// the IPv4 parser).
 static int url_kind(us s) {
     int32_t i = 0;
     while (i < s.n && (url_ch(s.p[i]) || (i && (s.p[i] == '+' || s.p[i] == '-' || s.p[i] == '.')))) i++;
@@ -559,10 +560,15 @@ static int url_kind(us s) {
     int32_t h = i + 3, j = h;
     while (j < s.n && (url_ch(s.p[j]) || s.p[j] == '.' || s.p[j] == '-')) j++;
     if (j == h) return 2;
+    int32_t end = j > h && s.p[j - 1] == '.' ? j - 1 : j, label = end;
+    while (label > h && s.p[label - 1] != '.') label--;
+    bool number = label < end;
+    for (int32_t k = label; k < end; k++) number &= s.p[k] >= '0' && s.p[k] <= '9';
+    if (number || (end - label >= 2 && s.p[label] == '0' && (s.p[label + 1] | 32) == 'x')) return 2;
     if (j < s.n && s.p[j] == ':') {
-        int32_t d = ++j;
-        while (j < s.n && s.p[j] >= '0' && s.p[j] <= '9') j++;
-        if (j - d > 5) return 2;
+        double port = 0;
+        while (++j < s.n && s.p[j] >= '0' && s.p[j] <= '9') port = port * 10 + (s.p[j] - '0');
+        if (port > 65535) return 0;
     }
     return j == s.n || s.p[j] == '/' || s.p[j] == '?' || s.p[j] == '#' ? 1 : 2;
 }
