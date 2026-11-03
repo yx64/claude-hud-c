@@ -4,7 +4,7 @@
 #   cmake -DGROUP=<Group> -DBIN=<BuildDir> [-DSTAMP=<File>] [-DRESULT=<File>] -P run.cmake
 #   cmake -DGROUP=<Group> -DBIN=<BuildDir> -DREFERENCE=<UpstreamDir> [-DNODE=<Node>] -P run.cmake
 # The second form writes the expected files from upstream first: <UpstreamDir> is a claude-hud
-# source tree of the version in compare/common.mjs, with its dist/ built; node 24 runs it. Each case
+# source tree of the version in compare/common.mjs, with its dist/ built; node 24 or later runs it. Each case
 # is also run under other time zones (and, off Windows, another locale), and one whose output
 # changes with them is refused: the expected files must hold on every machine. Off Windows, output
 # that differs from expected.out goes to expected-posix.out, and on macOS output that differs from
@@ -34,6 +34,8 @@
 #                      or expected-darwin.files/ likewise
 #   expected.err       instead of the two above: the test build exits 3 (input it does not reproduce
 #                      exactly) with this text in its stderr; upstream is not asked
+#   expected.kept      why upstream is not asked for this case's expected files any more: where the port
+#                      keeps a behaviour an upstream release dropped, they stay as an earlier one wrote them
 # Every case file holds the placeholders of common.cmake (hud_subst).
 cmake_minimum_required(VERSION 3.28)
 include(${CMAKE_CURRENT_LIST_DIR}/common.cmake)
@@ -184,8 +186,9 @@ function(refresh case dir)
   set(written ${dir}/claude/plugins/claude-hud)
   file(GLOB_RECURSE names RELATIVE ${written} ${written}/*)
   list(REMOVE_ITEM names config.json)
-  # Upstream's own parse cache; the port keeps its parse state elsewhere, in a form of its own.
-  list(FILTER names EXCLUDE REGEX "^transcript-cursors/")
+  # What only upstream keeps: its parse cache (the port keeps its parse state elsewhere, in a form of
+  # its own), its code stripped of types, and the heartbeat its /hud doctor reads.
+  list(FILTER names EXCLUDE REGEX "^(data/transcript-cursors/|stripped/|heartbeat\\.json$)")
   string(SHA256 tsha "${HUD_NATIVE_TRANSCRIPT}")
   set(files "")
   foreach(n IN LISTS names)
@@ -295,7 +298,7 @@ function(run_case case)
     string(STRIP "${want_err}" want_err)
   endif()
 
-  if(DEFINED REFERENCE AND want_err STREQUAL "")
+  if(DEFINED REFERENCE AND want_err STREQUAL "" AND NOT EXISTS ${cdir}/expected.kept)
     set(ref ${HUD_RUN}/reference/${GROUP}/${case}/canonical)
     refresh(${case} ${HUD_RUN}/reference/${GROUP}/${case} COMMAND ${reference_cmd})
     if(problem OR NOT code EQUAL 0)

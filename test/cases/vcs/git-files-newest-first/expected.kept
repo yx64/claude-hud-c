@@ -1,0 +1,3 @@
+claude-hud 0.15.0 runs its logic under node's permission model without read access to the cwd, so the
+stat behind its newest-first order fails and git's own order stays; the port keeps newest first. This
+expected.out was recorded from claude-hud 0.14.0.

@@ -235,7 +235,8 @@ function config(sb, now) {
     display.externalUsagePath = pick([sb.usageIn, '  ' + sb.usageIn + ' ', 'relative.json']);
     if (chance(0.5)) display.externalUsageFreshnessMs = pick([0, 300000, 1e12]);
   }
-  if (chance(0.2)) display.externalUsageWritePath = pick([sb.usageOut, sb.usageOut.replace(/\.json$/, '.txt')]);
+  // The read path among them: a refresh reads the snapshot before it writes one.
+  if (chance(0.2)) display.externalUsageWritePath = pick([sb.usageOut, sb.usageOut.replace(/\.json$/, '.txt'), sb.usageIn]);
   const c = { gitStatus: { enabled: false }, display };
   if (chance(0.1)) c.jjStatus = { enabled: true, showDirty: chance(0.5), showConflicts: chance(0.5) };
   if (chance(0.3)) c.lineLayout = 'compact';
@@ -255,7 +256,9 @@ const DIRS = ['C:\\测试 目录\\é#?%[x]', 'C:\\Users\\a b', 'D:\\', 'C:\\a\\.
 
 function stdin(tp, cwd, now) {
   const sec = Math.floor(now / 1000);
-  const s = { session_id: chance(0.9) ? `s${int(1, 5)}` : pick(['', 5]), transcript_path: tp, cwd: chance(0.8) ? cwd : pick(DIRS) };
+  // A relative transcript_path, which is not read; both sides run from this script's directory.
+  const s = { session_id: chance(0.9) ? `s${int(1, 5)}` : pick(['', 5]), transcript_path: chance(0.05) ? path.relative(process.cwd(), tp) : tp,
+    cwd: chance(0.8) ? cwd : pick(DIRS) };
   const m = {};
   if (chance(0.8)) m.display_name = pick(['Opus 5.5', 'Sonnet 4.5 (1M context)', '', '  ', 'Claude Haiku 4.5', '中文模型', '\x1b[31mred\x1b[0m']);
   if (chance(0.9)) m.id = pick(['claude-opus-5-5[1m]', 'opusplan', 'us.anthropic.claude-sonnet-4-5-20250929-v1:0', 'claude-3-5-haiku@20241022', 'claude-fable-5-1', 'minimax-m2.7']);
@@ -320,6 +323,26 @@ async function worker(k) {
     const env = { ...process.env, CLAUDE_CONFIG_DIR: sb.cfg, HUD_CACHE_DIR: sb.cache, HUD_FAKE_NOW_MS: String(now), HUD_FAKE_MEM: pick(['17179869184:5368709120', '1000:999', '68719476736:0']),
       COLUMNS: String(int(1, 250)) };
     if (chance(0.1)) delete env.COLUMNS;
+    // Either base URL may be no URL at all, which leaves the other to decide.
+    for (const k of ['ANTHROPIC_BASE_URL', 'ANTHROPIC_API_BASE_URL'])
+      if (chance(0.1)) env[k] = pick(['not a url', ' ', 'https://api.minimax.io/anthropic/', 'https://api.minimaxi.com/anthropic', 'http://localhost:8080/v1', 'https://example.com']);
+    // State an older release left beside data/, which a refresh that needs it moves in.
+    const old = [];
+    const plugin = path.join(sb.cfg, 'plugins', 'claude-hud');
+    // A run leaves data/speed-cache behind, empty once its files are put back, and either side moves
+    // the old one in only where there is none.
+    const dataSpeed = path.join(plugin, 'data', 'speed-cache');
+    if (chance(0.1)) {
+      fs.rmSync(dataSpeed, { recursive: true, force: true });
+      const date = new Date(now);
+      const key = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
+      const ledger = { date: key, sessions: { s1: { baseline: 0.5, weekBaseline: 0.25, total: 0.5, ts: now - 1000 } }, week: { start: now - 86400000, carry: 1 } };
+      old.push(path.join(plugin, 'daily-cost.json'), path.join(plugin, 'speed-cache'));
+      fs.writeFileSync(old[0], JSON.stringify(ledger));
+      fs.mkdirSync(old[1], { recursive: true });
+      const sha = crypto.createHash('sha256').update(path.resolve(tp)).digest('hex');
+      fs.writeFileSync(path.join(old[1], `${sha}.json`), JSON.stringify({ apiDurationMs: 1000, usageKey: '1:1:1:1', speed: null }));
+    }
     const jjLogs = [path.join(sb.proj, 'jj-c.log'), path.join(sb.proj, 'jj-ref.log')];
     if (conf.jjStatus?.enabled && fakeJj) {
       const pathKey = Object.keys(env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH';
@@ -333,12 +356,14 @@ async function worker(k) {
     const rc = await run(hudExe, [], { ...env, FAKE_JJ_LOG: jjLogs[0] }, input);
     const sc = snapshot(sb.cfg, extra);
     restore(s0, sc, sb.moved);
+    if (old.length) fs.rmSync(dataSpeed, { recursive: true, force: true });
     const rn = await runReference(ref, { ...env, FAKE_JJ_LOG: jjLogs[1] }, input);
     const sn = snapshot(sb.cfg, extra);
     const jjArgs = jjLogs.map((p) => (fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : ''));
     fs.mkdirSync(sb.moved, { recursive: true });
     for (const p of jjLogs) if (fs.existsSync(p)) fs.renameSync(p, path.join(sb.moved, crypto.randomUUID()));
     restore(s0, sn, sb.moved);
+    for (const p of old) fs.rmSync(p, { recursive: true, force: true });
     checkTestBuild(hudExe, ref, rc, rn);
     stats.cases++;
     if (rc.code === 3) {
@@ -346,7 +371,13 @@ async function worker(k) {
       stats.unsupported[why] = (stats.unsupported[why] ?? 0) + 1;
       if (ref.kind === 'upstream') continue;
     }
-    const ok = matches(ref, rc, rn) && contents(sc) === contents(sn) && jjArgs[0] === jjArgs[1];
+    // Old state the port left in place, as it moves it in only when it needs it, counts as moved.
+    const scMoved = new Map([...sc].map(([p, v]) => {
+      const rel = path.relative(plugin, p);
+      const to = path.join(plugin, 'data', rel);
+      return old.length && /^(daily-cost\.json$|speed-cache[\\/])/.test(rel) && !sc.has(to) ? [to, v] : [p, v];
+    }));
+    const ok = matches(ref, rc, rn) && contents(scMoved) === contents(sn) && jjArgs[0] === jjArgs[1];
     if (ok) stats.equal++;
     else {
       stats.diff++;

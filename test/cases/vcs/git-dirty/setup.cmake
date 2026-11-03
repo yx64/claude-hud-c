@@ -1,4 +1,6 @@
-# A repository in the cwd, with a fixed identity and fixed dates so that commit ids never change.
+# A repository in the cwd, with a fixed identity and fixed dates so that commit ids never change. The
+# changed files are written so that newest first is also git's own order (a.txt, new.txt, z.txt):
+# upstream cannot stat them and keeps git's order (git-files-newest-first).
 set(ENV{GIT_AUTHOR_NAME} t)
 set(ENV{GIT_AUTHOR_EMAIL} t@t)
 set(ENV{GIT_COMMITTER_NAME} t)
@@ -21,8 +23,8 @@ foreach(f a.txt b.txt sub/c.txt)
 endforeach()
 git(add .)
 git(commit -q -m init)
-file(WRITE ${HUD_DIR}/proj/a.txt "one\n2\nthree\nfour\n")
-git(mv b.txt b2.txt)
+git(mv b.txt z.txt)
 file(WRITE ${HUD_DIR}/proj/new.txt "x\n")
 git(add new.txt)
+file(WRITE ${HUD_DIR}/proj/a.txt "one\n2\nthree\nfour\n")
 file(WRITE ${HUD_DIR}/proj/untracked.txt "u\n")

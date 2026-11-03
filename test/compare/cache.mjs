@@ -39,7 +39,7 @@ const stats = { steps: 0, equal: 0, diff: 0, offsetWrong: 0, unsupported: 0 };
 const failures = [];
 
 // Upstream's saved states, which a reference run that must parse from the start goes without.
-const cursors = path.join(cfg, 'plugins', 'claude-hud', 'transcript-cursors');
+const cursors = path.join(cfg, 'plugins', 'claude-hud', 'data', 'transcript-cursors');
 
 async function refresh(tp, cache, extraEnv = {}, freshReference = false) {
   if (freshReference) fs.rmSync(cursors, { recursive: true, force: true });

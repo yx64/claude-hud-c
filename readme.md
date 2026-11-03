@@ -57,7 +57,7 @@ Byte-identical output is the rule every change is held to, not an aim. It is che
   parse. `ctest` runs the same tests.
 - **The comparison scripts** under `test/compare` run claude-hud itself next to claude-hud-c: all the session
   transcripts on the machine crossed with sets of stdin, config, width and time, and generated hostile transcripts and
-  configs. Running them needs node 24 and a claude-hud source tree of the version named in `test/compare/common.mjs`,
+  configs. Running them needs node 24 or later and a claude-hud source tree of the version named in `test/compare/common.mjs`,
   with its `dist/` built; each script's header says how to call it.
 
 Known gaps, where claude-hud-c renders English or an approximation instead:
@@ -73,10 +73,11 @@ Known gaps, where claude-hud-c renders English or an approximation instead:
   keys repeated within an object, where matching upstream would take more code than the case is worth. The order of
   git's changed files may also differ when some of them no longer exist; their content does not.
 
-One deliberate difference: in two cases claude-hud's git calls still run a command that a repository's own config
-names, and claude-hud-c's do not. A filter driver from that config whose name is not UTF-8 cannot be turned off with
-`-c`, so claude-hud-c runs no git at all there (`UNSUPPORTED`); and it sets `GIT_NO_LAZY_FETCH`, so a status that
-needs an object a partial clone is missing fails instead of fetching it through the repository's remote.
+Deliberate differences: claude-hud runs its logic under node's permission model, which reads only the files it names
+up front, and two things it did before stop working there; claude-hud-c keeps them. Changed files are listed newest
+first, where claude-hud cannot read their times and keeps git's order; and a rules directory holding a link to a file
+elsewhere is counted, where claude-hud drops the count. Nor does claude-hud-c write claude-hud's `heartbeat.json`,
+which only claude-hud's `/hud` command reads.
 
 Two additions: the run time of each refresh at the end of the last line, and a parse-state file per transcript (next
 section).

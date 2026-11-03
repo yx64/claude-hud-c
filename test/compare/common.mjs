@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 // The upstream version the port reproduces. Moving to another one is a deliberate step: change
 // this, run the comparison scripts against that version's source, and follow up on every difference.
-export const VERSION = '0.14.0';
+export const VERSION = '0.15.0';
 
 const runner = fileURLToPath(new URL('./run-upstream.mjs', import.meta.url));
 const fakeClock = fileURLToPath(new URL('./fakeclock.mjs', import.meta.url));
@@ -69,18 +69,21 @@ export const runReference = (ref, env, input) => ref.kind === 'exe'
   : run(process.execPath, ['--import', pathToFileURL(fakeClock).href, runner, ref.path], env, input);
 
 // The files a refresh may write, with their times: everything under <ConfigDir>/plugins/claude-hud
-// but the config and upstream's transcript cursors, plus extra paths such as a usage snapshot. The
-// cursors are upstream's own parse cache; the port keeps its parse state elsewhere, in a form of its own.
-const UPSTREAM_CACHE = 'transcript-cursors';
+// but the config and what only upstream keeps, plus extra paths such as a usage snapshot. Upstream's
+// own are its parse cache (the port keeps its parse state elsewhere, in a form of its own), its code
+// stripped of types, and the heartbeat its /hud doctor reads.
+const UPSTREAM_ONLY = ['data/transcript-cursors', 'stripped', 'heartbeat.json'];
 export function snapshot(cfgDir, extra = []) {
   const files = new Map();
   const plugin = path.join(cfgDir, 'plugins', 'claude-hud');
+  const skip = new Set(['config.json', ...UPSTREAM_ONLY].map((p) => path.join(plugin, p)));
   const walk = (d) => {
     if (!fs.existsSync(d)) return;
     for (const e of fs.readdirSync(d, { withFileTypes: true })) {
       const p = path.join(d, e.name);
-      if (e.isDirectory() && !(d === plugin && e.name === UPSTREAM_CACHE)) walk(p);
-      else if (e.isFile() && e.name !== 'config.json') files.set(p, null);
+      if (skip.has(p)) continue;
+      if (e.isDirectory()) walk(p);
+      else if (e.isFile()) files.set(p, null);
     }
   };
   walk(plugin);
