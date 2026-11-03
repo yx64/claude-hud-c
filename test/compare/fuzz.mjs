@@ -347,8 +347,9 @@ async function worker(k) {
     if (conf.jjStatus?.enabled && fakeJj) {
       const pathKey = Object.keys(env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH';
       env[pathKey] = `${fakeJj}${path.delimiter}${env[pathKey]}`;
+      // An environment variable cannot hold NUL, so the generated text loses it.
       env.FAKE_JJ_OUT = pick(['abc12345\x1fmain\x1e2nd\x1f1\x1f0\n', 'abc12345\x1f\x1f0\x1f1\r\n', 'zz\x1f\x1f2\x1f0', 'a\x1fb\x1e\x1f1\x1f0', 'x\ny\x1f\x1f1\x1f0',
-        ` \x1b[31m${pick(TEXT)}\x1f${pick(TEXT)}\x1f1\x1f1`, 'q'.repeat(20000), `qpvuntsm\x1f${'x'.repeat(63)}🇬🇧\x1f0\x1f0`]);
+        ` \x1b[31m${pick(TEXT)}\x1f${pick(TEXT)}\x1f1\x1f1`.replaceAll('\0', ''), 'q'.repeat(20000), `qpvuntsm\x1f${'x'.repeat(63)}🇬🇧\x1f0\x1f0`]);
       env.FAKE_JJ_EXIT = pick(['0', '0', '0', '1']);
     }
     const extra = [sb.usageOut];
