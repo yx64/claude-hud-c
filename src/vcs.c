@@ -7,9 +7,9 @@
 
 // ---- git-runner.js ----
 
-// GIT_NO_LAZY_FETCH: a partial clone fetches a missing object through the remote its own config names,
-// with that config's core.sshCommand or uploadpack, so a repository could still run a command of its own;
-// a status that needs such an object fails instead. Upstream fetches. Git older than 2.45 ignores it.
+// GIT_NO_LAZY_FETCH: a partial clone fetches a missing object on its own, through the repository's own
+// transport config; a status that needs such an object fails instead. Git older than 2.45 ignores it, which
+// protocol.allow=never among the git.js arguments covers.
 static const char *const GIT_ENV[] = {"GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0", "GCM_INTERACTIVE=Never", "GIT_NO_LAZY_FETCH=1",
                                       nullptr};
 
@@ -21,6 +21,15 @@ static int run_git(us git, us cwd, const char *const *args, uint32_t timeout, us
 
 #define QUIET "-c", "core.quotePath=false", "--no-optional-locks"
 
+static bool plain_name(us s) {  // /^[\w.-]+$/
+    if (!s.n) return false;
+    for (int32_t i = 0; i < s.n; i++) {
+        uint16_t c = s.p[i];
+        if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '.' || c == '-')) return false;
+    }
+    return true;
+}
+
 static bool github_name(jv v) {  // /^[A-Za-z0-9_.-]+$/ on String(v ?? '')
     if (jis_nullish(v)) return false;
     if (!jis_str(v)) {
@@ -28,11 +37,7 @@ static bool github_name(jv v) {  // /^[A-Za-z0-9_.-]+$/ on String(v ?? '')
         return false;
     }
     us s = jstr(v);
-    if (!s.n) return false;
-    for (int32_t i = 0; i < s.n; i++) {
-        uint16_t c = s.p[i];
-        if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '.' || c == '-')) return false;
-    }
+    if (!plain_name(s)) return false;
     // new URL() would fold these path segments away.
     if (us_eq_c(s, ".") || us_eq_c(s, "..")) UNSUPPORTED("repository owner or name that is a dot segment");
     return true;
@@ -118,22 +123,14 @@ static bool parse_digits(us s, double *v) {  // Number.parseInt(s, 10) for git's
     return true;
 }
 
-// QUIET, then what keeps git from running commands a repository's own config names: core.fsmonitor on
-// every status, and filter drivers whenever git hashes a changed file. Both are turned off for drivers
-// that do not come from the user's global or system config, so git-lfs keeps working. A name -c cannot hold
-// at all makes git refuse to run; one that would reach git as another name is caught first (sendable).
+// QUIET, then what keeps git from running commands a repository's own config names, each kind shut whole:
+// every transport, so a lazy fetch reaches none of the repository's transport or credential settings;
+// core.fsmonitor on every status; and filter drivers whenever git hashes a changed file, turned off for
+// drivers that do not come from the user's global or system config, so git-lfs keeps working.
 typedef struct { const char **p; int n; } Args;
 
-// Whether the name, back in UTF-8, is the bytes git read. Bytes that are not UTF-8 came through as U+FFFD,
-// and a surrogate encoded on its own comes back in another form; a character outside the BMP may be
-// either, so it is refused as well. -c could not name such a driver, which would then still run.
-static bool sendable(us name) {
-    for (int32_t i = 0; i < name.n; i++)
-        if (name.p[i] == 0xFFFD || (name.p[i] >= 0xD800 && name.p[i] <= 0xDFFF)) return false;
-    return true;
-}
-
-// False when a driver cannot be turned off: git is then not run at all, where upstream runs it.
+// False when a driver's name is not plain, so -c may not name it back (bytes that are not UTF-8, an =):
+// git is then not run at all.
 static bool safe_args(us git, us cwd, Args *safe) {
     us out, *f;
     int nf = 0;
@@ -150,16 +147,12 @@ static bool safe_args(us git, us cwd, Args *safe) {
         int32_t dot = key.n - 1;
         while (dot >= 0 && key.p[dot] != '.') dot--;
         us name = dot > 7 ? us_slice(key, 7, dot) : US_EMPTY;  // filter.<name>.<key>
-        bool seen = !name.n;
+        if (!plain_name(name)) return false;
+        bool seen = false;
         for (int k = 0; k < nn && !seen; k++) seen = us_eq(names[k], name);
-        if (seen) continue;
-        if (!sendable(name)) {
-            UNSUPPORTED("filter driver from the repository's config whose name is not UTF-8");
-            return false;
-        }
-        names[nn++] = name;
+        if (!seen) names[nn++] = name;
     }
-    static const char *const head[] = {QUIET, "-c", "core.fsmonitor=false"};
+    static const char *const head[] = {QUIET, "-c", "core.fsmonitor=false", "-c", "protocol.allow=never"};
     static const char *const keys[] = {"clean=", "process=", "required=false"};
     Args a = {arena_alloc(sizeof(char *) * (countof(head) + 2 * countof(keys) * (size_t)nn)), 0};
     for (size_t j = 0; j < countof(head); j++) a.p[a.n++] = head[j];
