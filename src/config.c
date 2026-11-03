@@ -278,12 +278,22 @@ static const Key KEYS[] = {
 #undef TEXT
 static const char *const SECTIONS[] = {"gitStatus", "jjStatus", "display", "colors"};
 
-static const Key *key_of(const char *sec, jv k) {
-    const char *s = yyjson_get_str(k);
-    size_t n = yyjson_get_len(k);
+static const Key *key_in(const char *sec, const char *s, size_t n) {
     for (size_t i = 0; i < countof(KEYS); i++)
         if ((KEYS[i].sec == sec || (sec && KEYS[i].sec && !strcmp(KEYS[i].sec, sec))) && strlen(KEYS[i].key) == n && !memcmp(KEYS[i].key, s, n))
             return &KEYS[i];
+    return nullptr;
+}
+
+static const Key *key_of(const char *sec, jv k) { return key_in(sec, yyjson_get_str(k), yyjson_get_len(k)); }
+
+// keyEntry(prefix + key) at the top level: a key spelled <Section>.<Key> names that key as well.
+static const Key *dotted_key(jv k) {
+    const char *s = yyjson_get_str(k), *dot = memchr(s, '.', yyjson_get_len(k));
+    if (!dot) return nullptr;
+    for (size_t i = 0; i < countof(SECTIONS); i++)
+        if ((size_t)(dot - s) == strlen(SECTIONS[i]) && !memcmp(s, SECTIONS[i], (size_t)(dot - s)))
+            return key_in(SECTIONS[i], dot + 1, yyjson_get_len(k) - (size_t)(dot - s) - 1);
     return nullptr;
 }
 
@@ -404,6 +414,7 @@ static void file_problems(Config *c, const char *file, jv raw) {
         if ((legacy && key_is(k, "layout")) || (sep_set && key_is(k, "showSeparators"))) continue;
         if (pl_set && key_is(k, "pathLevels")) v = lpl, pl_seen = true;
         const Key *key = key_of(nullptr, k);
+        if (!key) key = dotted_key(k);
         if (key) {
             check(c, file, key, v);
             continue;
