@@ -349,7 +349,7 @@ int os_list_dir(us dir, DirEntry **out, int max) {
 }
 
 // fs.mkdirSync(dir, { recursive: true })
-static void ensure_dir(us dir) {
+void os_mkdirs(us dir) {
     for (int32_t i = 3; i <= dir.n; i++) {
         if (i == dir.n || dir.p[i] == '\\') CreateDirectoryW(wz(us_slice(dir, 0, i)), nullptr);
     }
@@ -361,7 +361,7 @@ int os_lock_file(us path) {
     const wchar_t *w = wz(path);
     HANDLE h = CreateFileW(w, GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (h == INVALID_HANDLE_VALUE && GetLastError() == ERROR_PATH_NOT_FOUND) {
-        ensure_dir(dir_of(path));
+        os_mkdirs(dir_of(path));
         h = CreateFileW(w, GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
     }
     if (h == INVALID_HANDLE_VALUE) return GetLastError() == ERROR_FILE_EXISTS ? LOCK_HELD : LOCK_FAILED;
@@ -385,7 +385,7 @@ bool write_bytes(us path, const void *p, size_t n, double mtime, int mode) {
     HANDLE h = CreateFileW(w, GENERIC_WRITE, 0, nullptr, disposition, FILE_ATTRIBUTE_NORMAL, nullptr);
     // The directory is made only once the first attempt says it is missing.
     if (h == INVALID_HANDLE_VALUE && GetLastError() == ERROR_PATH_NOT_FOUND) {
-        ensure_dir(dir_of(path));
+        os_mkdirs(dir_of(path));
         h = CreateFileW(w, GENERIC_WRITE, 0, nullptr, disposition, FILE_ATTRIBUTE_NORMAL, nullptr);
     }
     if (h == INVALID_HANDLE_VALUE) return false;

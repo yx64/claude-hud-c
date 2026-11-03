@@ -383,7 +383,7 @@ int os_list_dir(us dir, DirEntry **out, int max) {
 }
 
 // fs.mkdirSync(dir, { recursive: true, mode: 0o700 }), as upstream makes its cache directories.
-static void ensure_dir(us dir) {
+void os_mkdirs(us dir) {
     for (int32_t i = 1; i <= dir.n; i++)
         if (i == dir.n || dir.p[i] == '/') mkdir(u8(us_slice(dir, 0, i)), 0700);
 }
@@ -394,7 +394,7 @@ int os_lock_file(us path) {
     const char *f = u8(path);
     int fd = open(f, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
     if (fd < 0 && errno == ENOENT) {
-        ensure_dir(dir_of(path));
+        os_mkdirs(dir_of(path));
         fd = open(f, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
     }
     if (fd < 0) return errno == EEXIST ? LOCK_HELD : LOCK_FAILED;
@@ -413,7 +413,7 @@ bool write_bytes(us path, const void *p, size_t n, double mtime, int mode) {
     int fd = open(f, flags, 0600);
     // The directory is made only once the first attempt says it is missing.
     if (fd < 0 && errno == ENOENT) {
-        ensure_dir(dir_of(path));
+        os_mkdirs(dir_of(path));
         fd = open(f, flags, 0600);
     }
     if (fd < 0) return false;

@@ -58,6 +58,7 @@ bool write_bytes(us path, const void *p, size_t n, double mtime, int mode);
 bool os_rename(us from, us to);  // replacing the target
 bool os_append(us path, const void *p, size_t n);
 void os_mkdir(us dir);
+void os_mkdirs(us dir);  // fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
 // A lock file made only when there is none, readable by the owner only, its directory made when missing.
 enum { LOCK_TAKEN, LOCK_HELD, LOCK_FAILED };
 int os_lock_file(us path);

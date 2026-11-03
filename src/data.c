@@ -424,6 +424,19 @@ void gather_usage(Ctx *ctx) {
     if (ex.scoped) ctx->usage.scoped = ex.scoped, ctx->usage.nscoped = ex.nscoped;
 }
 
+// claude-hud keeps its state under data/ from 0.15.0 on and moves there what an older release left beside
+// it. Only a read that found nothing looks for that, so a refresh that finds its state pays nothing more.
+static us state_path(Ctx *ctx, const char *name) {
+    return path_join(ctx->claude_dir, US("plugins"), US("claude-hud"), US("data"), us_c(name));
+}
+
+static bool move_old_state(Ctx *ctx, const char *name) {
+    us to = state_path(ctx, name), from = path_join(ctx->claude_dir, US("plugins"), US("claude-hud"), us_c(name));
+    if (file_exists(to) || !file_exists(from)) return false;
+    os_mkdirs(dir_of(to));
+    return os_rename(from, to);
+}
+
 // ---- daily-cost.js ----
 
 typedef struct { us id; double baseline, week_baseline, total, ts; } Session;
@@ -468,6 +481,7 @@ static void update_ledger(Ctx *ctx, us path) {
     memcpy(date, today, 16);
     bool changed = true;
     jv root = read_json_file(path);
+    if (!root && move_old_state(ctx, "daily-cost.json")) root = read_json_file(path);
     jv d = jget(root, "date"), sess = jget(root, "sessions");
     bool digits = jis_str(d) && yyjson_get_len(d) == 8;
     for (int i = 0; digits && i < 8; i++) digits = yyjson_get_str(d)[i] >= '0' && yyjson_get_str(d)[i] <= '9';
@@ -580,7 +594,7 @@ static void update_ledger(Ctx *ctx, us path) {
 }
 
 void cost_totals(Ctx *ctx) {
-    us path = path_join(ctx->claude_dir, US("plugins"), US("claude-hud"), US("daily-cost.json"));
+    us path = state_path(ctx, "daily-cost.json");
     us lock = us_cat(path, US(".lock"));
     bool held = ledger_lock(lock);
     update_ledger(ctx, path);
@@ -628,8 +642,7 @@ void output_speed(Ctx *ctx) {
     usage = jget(usage, "current_usage");
     jv output = jget(usage, "output_tokens"), api = sget(ctx, "cost", "total_api_duration_ms");
     if (!tp.n || !jtruthy(usage) || !count_value(output) || !count_value(api)) return;
-    us file = path_join(ctx->claude_dir, US("plugins"), US("claude-hud"), US("speed-cache"),
-                        us_cat(sha256_hex(path_resolve(tp)), US(".json")));
+    us file = path_join(state_path(ctx, "speed-cache"), us_cat(sha256_hex(path_resolve(tp)), US(".json")));
     sb kb = {0};
     join_part(&kb, jget(usage, "input_tokens"));
     sb_ch(&kb, ':');
@@ -640,6 +653,7 @@ void output_speed(Ctx *ctx) {
     join_part(&kb, jget(usage, "cache_read_input_tokens"));
     us key = sb_done(&kb);
     jv st = read_json_file(file);
+    if (!st && move_old_state(ctx, "speed-cache")) st = read_json_file(file);
     jv pa = jget(st, "apiDurationMs"), pk = jget(st, "usageKey"), ps = jget(st, "speed");
     bool prev = st && !yyjson_is_null(st) && count_value(pa) && jis_str(pk) && (jis_nullish(ps) || count_value(ps));
     double a = jnum(api), out = jnum(output);
