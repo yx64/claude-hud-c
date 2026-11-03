@@ -30,7 +30,7 @@ const pools = [
 ];
 const seg = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 let seed = 3;
-const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+const rnd = () => ((seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff) / 2147483648);
 const strings = [];
 for (let i = 0; i < 20000; i++) {
   const n = 1 + Math.floor(rnd() * 12);

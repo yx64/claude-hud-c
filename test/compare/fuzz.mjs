@@ -12,7 +12,7 @@ import { checkTestBuild, contents, matches, reference, restore, run, runReferenc
 const [hudExe, refArg, workDir, casesArg, seedArg, fakeJj] = process.argv.slice(2);
 const total = Number(casesArg);
 let seed = Number(seedArg ?? 1);
-const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+const rnd = () => ((seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff) / 2147483648);
 const pick = (a) => a[Math.floor(rnd() * a.length)];
 const chance = (p) => rnd() < p;
 const int = (a, b) => a + Math.floor(rnd() * (b - a + 1));

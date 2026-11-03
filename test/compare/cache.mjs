@@ -199,7 +199,7 @@ const walk = (d) => {
 walk(path.join(realClaude, 'projects'));
 real.sort((a, b) => fs.statSync(b).size - fs.statSync(a).size);
 let seed = 11;
-const pick = (n) => Math.floor((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648 * n);
+const pick = (n) => Math.floor((seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff) / 2147483648 * n);
 for (const src of real.slice(0, maxReal)) {
   const bytes = fs.readFileSync(src);
   const ends = [];

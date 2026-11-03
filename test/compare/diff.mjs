@@ -154,7 +154,7 @@ const MEMORY = ['17179869184:5368709120', '68719476736:1048576'];
 // Variants are picked by a fixed-seed generator, so no two dimensions move in lockstep and a
 // rerun covers the same cases.
 let seed = 7;
-const pick = (n) => Math.floor((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648 * n);
+const pick = (n) => Math.floor((seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff) / 2147483648 * n);
 const transcripts = listTranscripts();
 const cases = [];
 for (const tp of transcripts) {
