@@ -403,8 +403,8 @@ static void write_snapshot(Ctx *ctx, Usage *u) {
     while (base > 0 && path.p[base - 1] != OS_SEP) base--;
     us name = us_cat(US("."), us_slice(path, base, path.n), US("."), us_int(os_pid()), US("."), us_int((int64_t)ctx->now), US(".tmp"));
     us tmp = path_join(dir, name);
-    if (!write_file(tmp, sb_done(&body), 0, WRITE_NEW)) return;
-    os_rename(tmp, path);
+    // A failed write or rename leaves no temporary file, as upstream removes it.
+    if (!write_file(tmp, sb_done(&body), 0, WRITE_NEW) || !os_rename(tmp, path)) os_remove(tmp);
 }
 
 // main(): stdin's usage, the snapshot written from it, and resolveUsage on top.
@@ -586,8 +586,8 @@ static void update_ledger(Ctx *ctx, us path) {
         us name = us_cat(US("daily-cost.json."), us_int(os_pid()), US("."), us_int((int64_t)now), US(".tmp"));
         us tmp = path_join(dir_of(path), name);
         // Write-then-rename, so concurrent sessions never read a torn ledger. The rename keeps the
-        // stamped time.
-        if (write_file(tmp, sb_done(&b), now, WRITE_NEW)) os_rename(tmp, path);
+        // stamped time. A failed write or rename leaves no temporary file, as upstream removes it.
+        if (!write_file(tmp, sb_done(&b), now, WRITE_NEW) || !os_rename(tmp, path)) os_remove(tmp);
     }
     double today_usd = 0, week_usd = 0;
     for (int i = 0; i < n; i++) today_usd += fmax(0, e[i].total - e[i].baseline);
