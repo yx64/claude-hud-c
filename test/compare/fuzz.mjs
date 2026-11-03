@@ -352,7 +352,8 @@ async function worker(k) {
         ` \x1b[31m${pick(TEXT)}\x1f${pick(TEXT)}\x1f1\x1f1`.replaceAll('\0', ''), 'q'.repeat(20000), `qpvuntsm\x1f${'x'.repeat(63)}🇬🇧\x1f0\x1f0`]);
       env.FAKE_JJ_EXIT = pick(['0', '0', '0', '1']);
     }
-    const extra = [sb.usageOut];
+    // The snapshot read too: a write path may name it, and the reference must read it as the test build did.
+    const extra = [sb.usageOut, sb.usageIn];
     const s0 = snapshot(sb.cfg, extra);
     const rc = await run(hudExe, [], { ...env, FAKE_JJ_LOG: jjLogs[0] }, input);
     const sc = snapshot(sb.cfg, extra);
