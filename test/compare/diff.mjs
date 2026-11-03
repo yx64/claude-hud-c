@@ -50,8 +50,6 @@ function makeSandbox(k) {
     for (const f of ['a.txt', 'b.txt', 'c.txt', 'sub/d.txt']) fs.writeFileSync(path.join(repo, f), 'one\ntwo\nthree\n');
     git(repo, 'add', '.');
     git(repo, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'init');
-    // Newest first is also git's own order (a.txt, new.txt, z.txt): upstream cannot stat the files and
-    // keeps git's order, where the port sorts by time.
     git(repo, 'mv', 'b.txt', 'z.txt');
     fs.writeFileSync(path.join(repo, 'new.txt'), 'x\n');
     git(repo, 'add', 'new.txt');

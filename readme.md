@@ -70,15 +70,14 @@ Known gaps, where claude-hud-c renders English or an approximation instead:
 - a few inputs where claude-hud depends on node's locale data or throws, such as a system locale other than en-US or
   zh-CN, or a Windows path that is not drive-absolute. The source marks each one `UNSUPPORTED("<Reason>")`;
 - inputs that only crafted data or rare setups produce, such as times before 1970, more than 256 skills, or JSON
-  keys repeated within an object, where matching upstream would take more code than the case is worth. The order of
-  git's changed files may also differ when some of them no longer exist; their content does not.
+  keys repeated within an object, where matching upstream would take more code than the case is worth.
 
-Deliberate differences: claude-hud runs its logic under node's permission model, which reads only the files it names
-up front, and two things it did before stop working there; claude-hud-c keeps them. Changed files are listed newest
-first, where claude-hud cannot read their times and keeps git's order; and a rules directory holding a link to a file
-elsewhere is counted, where claude-hud drops the count. A config file that is a symbolic link is read, where
-claude-hud on Linux and macOS refuses to open it and reports it as unreadable. Nor does claude-hud-c write
-claude-hud's `heartbeat.json`, which only claude-hud's `/hud` command reads.
+Deliberate differences: changed files are listed in the order git reports them, unsorted, where claude-hud sorts them
+newest first by their times (since 0.15.0 its permission model keeps it from reading those times, so its output keeps
+git's order too). claude-hud runs its logic under that permission model, which reads only the files it names up front,
+and a rules directory holding a link to a file elsewhere is no longer counted there; claude-hud-c counts it. A config
+file that is a symbolic link is read, where claude-hud on Linux and macOS refuses to open it and reports it as
+unreadable. Nor does claude-hud-c write claude-hud's `heartbeat.json`, which only claude-hud's `/hud` command reads.
 
 Two additions: the run time of each refresh at the end of the last line, and a parse-state file per transcript (next
 section).

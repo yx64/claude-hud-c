@@ -1,5 +1,5 @@
 # A repository in the cwd, with a fixed identity and fixed dates so that commit ids never change. The
-# changed files are newest first, new.txt ahead of a.txt and b2.txt, unlike git's own order.
+# changed files stay in git's own order, though new.txt is written last and is the newest.
 set(ENV{GIT_AUTHOR_NAME} t)
 set(ENV{GIT_AUTHOR_EMAIL} t@t)
 set(ENV{GIT_COMMITTER_NAME} t)

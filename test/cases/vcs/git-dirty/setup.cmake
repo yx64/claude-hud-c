@@ -1,6 +1,4 @@
-# A repository in the cwd, with a fixed identity and fixed dates so that commit ids never change. The
-# changed files are written so that newest first is also git's own order (a.txt, new.txt, z.txt):
-# upstream cannot stat them and keeps git's order (git-files-newest-first).
+# A repository in the cwd, with a fixed identity and fixed dates so that commit ids never change.
 set(ENV{GIT_AUTHOR_NAME} t)
 set(ENV{GIT_AUTHOR_EMAIL} t@t)
 set(ENV{GIT_COMMITTER_NAME} t)

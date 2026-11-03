@@ -880,31 +880,10 @@ static us git_files_line(void) {
     bool has_cwd = jtruthy(cwdv) && jis_str(cwdv);
     us cwd = has_cwd ? jstr(cwdv) : US_EMPTY;
     int n = st->nfiles;
-    double *mt = arena_alloc(sizeof(double) * (size_t)(n + 1));
-    for (int i = 0; i < n; i++) {
-        us r;
-        mt[i] = 0;
-        if (has_cwd && inside_cwd(cwd, st->files[i].full, &r)) {
-            fstat_t fs = stat_path(r);
-            mt[i] = fs.ok ? fs.mtime_ms : NAN;  // NaN: statSync threw, the comparator answers 0
-        }
-    }
-    // Stable insertion sort, newest first, like the comparator upstream.
-    int *ord = arena_alloc(sizeof(int) * (size_t)(n + 1));
-    for (int i = 0; i < n; i++) ord[i] = i;
-    for (int i = 1; i < n; i++) {
-        int x = ord[i], j = i - 1;
-        while (j >= 0) {
-            double a = mt[ord[j]], b = mt[x];
-            if (isnan(a) || isnan(b) || !(b - a > 0)) break;
-            ord[j + 1] = ord[j], j--;
-        }
-        ord[j + 1] = x;
-    }
     us entries[9];
     int ne = 0;
     for (int k = 0; k < n && k < 6; k++) {
-        GitFile *f = &st->files[ord[k]];
+        GitFile *f = &st->files[k];
         us (*color)(us) = f->type == TF_ADDED ? green : f->type == TF_DELETED ? red : yellow;
         static const us prefix[] = {[TF_ADDED] = US_INIT("+"), [TF_DELETED] = US_INIT("-"), [TF_MODIFIED] = US_INIT("~")};
         us r;

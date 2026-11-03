@@ -34,8 +34,6 @@
 #                      or expected-darwin.files/ likewise
 #   expected.err       instead of the two above: the test build exits 3 (input it does not reproduce
 #                      exactly) with this text in its stderr; upstream is not asked
-#   expected.kept      why upstream is not asked for this case's expected files any more: where the port
-#                      keeps a behaviour an upstream release dropped, they stay as an earlier one wrote them
 # Every case file holds the placeholders of common.cmake (hud_subst).
 cmake_minimum_required(VERSION 3.28)
 include(${CMAKE_CURRENT_LIST_DIR}/common.cmake)
@@ -298,7 +296,7 @@ function(run_case case)
     string(STRIP "${want_err}" want_err)
   endif()
 
-  if(DEFINED REFERENCE AND want_err STREQUAL "" AND NOT EXISTS ${cdir}/expected.kept)
+  if(DEFINED REFERENCE AND want_err STREQUAL "")
     set(ref ${HUD_RUN}/reference/${GROUP}/${case}/canonical)
     refresh(${case} ${HUD_RUN}/reference/${GROUP}/${case} COMMAND ${reference_cmd})
     if(problem OR NOT code EQUAL 0)
