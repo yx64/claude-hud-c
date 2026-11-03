@@ -76,8 +76,9 @@ Known gaps, where claude-hud-c renders English or an approximation instead:
 Deliberate differences: claude-hud runs its logic under node's permission model, which reads only the files it names
 up front, and two things it did before stop working there; claude-hud-c keeps them. Changed files are listed newest
 first, where claude-hud cannot read their times and keeps git's order; and a rules directory holding a link to a file
-elsewhere is counted, where claude-hud drops the count. Nor does claude-hud-c write claude-hud's `heartbeat.json`,
-which only claude-hud's `/hud` command reads.
+elsewhere is counted, where claude-hud drops the count. A config file that is a symbolic link is read, where
+claude-hud on Linux and macOS refuses to open it and reports it as unreadable. Nor does claude-hud-c write
+claude-hud's `heartbeat.json`, which only claude-hud's `/hud` command reads.
 
 Two additions: the run time of each refresh at the end of the last line, and a parse-state file per transcript (next
 section).
