@@ -546,15 +546,40 @@ static us format_model_name(us name) {
     return r;
 }
 
+static bool url_ch(uint16_t c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'); }
+
+// Whether new URL() takes s: 0 no (there is no scheme), 1 yes (http or https, a plain host, an optional
+// port), 2 only a URL parser can tell.
+static int url_kind(us s) {
+    int32_t i = 0;
+    while (i < s.n && (url_ch(s.p[i]) || (i && (s.p[i] == '+' || s.p[i] == '-' || s.p[i] == '.')))) i++;
+    if (!i || i == s.n || s.p[i] != ':' || !((s.p[0] | 32) >= 'a' && (s.p[0] | 32) <= 'z')) return 0;
+    us scheme = us_lower(us_slice(s, 0, i));
+    if (!(us_eq_c(scheme, "http") || us_eq_c(scheme, "https")) || !us_starts_c(us_slice(s, i, s.n), "://")) return 2;
+    int32_t h = i + 3, j = h;
+    while (j < s.n && (url_ch(s.p[j]) || s.p[j] == '.' || s.p[j] == '-')) j++;
+    if (j == h) return 2;
+    if (j < s.n && s.p[j] == ':') {
+        int32_t d = ++j;
+        while (j < s.n && s.p[j] >= '0' && s.p[j] <= '9') j++;
+        if (j - d > 5) return 2;
+    }
+    return j == s.n || s.p[j] == '/' || s.p[j] == '?' || s.p[j] == '#' ? 1 : 2;
+}
+
 static us provider_label(void) {
     if (us_eq_c(env_get("CLAUDE_CODE_USE_BEDROCK"), "1")) return US("Bedrock");
     if (us_eq_c(env_get("CLAUDE_CODE_USE_VERTEX"), "1")) return US("Vertex");
     // isMiniMaxAnthropicEndpoint compares new URL(base).origin + pathname without trailing slashes.
     // A URL can only normalize to those two endpoints if it already spells one of them, give or
-    // take letter case and trailing slashes.
-    us base = us_trim(env_get("ANTHROPIC_BASE_URL"));
-    if (!base.n) base = us_trim(env_get("ANTHROPIC_API_BASE_URL"));
-    if (base.n) {
+    // take letter case and trailing slashes. The launcher hands the logic either variable only where
+    // new URL() takes it, so ANTHROPIC_BASE_URL that is not a URL leaves ANTHROPIC_API_BASE_URL to decide.
+    us url = us_trim(env_get("ANTHROPIC_BASE_URL")), api = us_trim(env_get("ANTHROPIC_API_BASE_URL"));
+    int kind = url_kind(url);
+    if (kind == 2 && us_find_c(us_lower(api), "minimax", 0) >= 0) UNSUPPORTED("ANTHROPIC_BASE_URL needing URL parsing");
+    us base = kind ? url : api;
+    if (!kind) kind = url_kind(api);
+    if (kind) {
         us low = us_lower(base);
         static const char *const ends[] = {"https://api.minimax.io/anthropic", "https://api.minimaxi.com/anthropic"};
         for (size_t i = 0; i < countof(ends); i++) {
