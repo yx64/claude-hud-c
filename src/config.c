@@ -413,11 +413,13 @@ static void file_problems(Config *c, const char *file, jv raw) {
     jv k, v;
     yyjson_obj_foreach(raw, idx, max, k, v) {
         if ((legacy && key_is(k, "layout")) || (sep_set && key_is(k, "showSeparators"))) continue;
-        if (pl_set && key_is(k, "pathLevels")) v = lpl, pl_seen = true;
+        // Not assigned to v: the loop takes the next key from v.
+        jv checked = v;
+        if (pl_set && key_is(k, "pathLevels")) checked = lpl, pl_seen = true;
         const Key *key = key_of(nullptr, k);
         if (!key) key = dotted_key(k);
         if (key) {
-            check(c, file, key, v);
+            check(c, file, key, checked);
             continue;
         }
         for (size_t i = 0; i < countof(SECTIONS); i++) {
