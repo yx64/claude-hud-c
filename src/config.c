@@ -230,10 +230,11 @@ static const char *const POSITIONS[] = {"first", "last"};
 
 enum { R_BOOL, R_ONE_OF, R_LEVELS, R_MAX_WIDTH, R_POSITIVE, R_WHOLE, R_PERCENT, R_PATH, R_TEXT, R_COLOR, R_BAR,
        R_ELEMENTS, R_ELEMENTS_SOME, R_SEGMENTS, R_GROUPS };
-typedef struct { const char *sec, *key; uint8_t rule, n; const char *const *names; } Key;
-#define K(sec, key, rule) {sec, key, rule, 0, nullptr}
-#define ONE(sec, key, names) {sec, key, R_ONE_OF, countof(names), names}
-#define TEXT(sec, key, max) {sec, key, R_TEXT, max, nullptr}
+// len is the key's length, so a lookup passes over most entries without comparing a string.
+typedef struct { const char *sec, *key; uint8_t rule, n, len; const char *const *names; } Key;
+#define K(sec, key, rule) {sec, key, rule, 0, sizeof(key) - 1, nullptr}
+#define ONE(sec, key, names) {sec, key, R_ONE_OF, countof(names), sizeof(key) - 1, names}
+#define TEXT(sec, key, max) {sec, key, R_TEXT, max, sizeof(key) - 1, nullptr}
 
 // Every key of DEFAULT_CONFIG, in its order; null sec is the top level.
 static const Key KEYS[] = {
@@ -280,7 +281,7 @@ static const char *const SECTIONS[] = {"gitStatus", "jjStatus", "display", "colo
 
 static const Key *key_in(const char *sec, const char *s, size_t n) {
     for (size_t i = 0; i < countof(KEYS); i++)
-        if ((KEYS[i].sec == sec || (sec && KEYS[i].sec && !strcmp(KEYS[i].sec, sec))) && strlen(KEYS[i].key) == n && !memcmp(KEYS[i].key, s, n))
+        if (KEYS[i].len == n && (KEYS[i].sec == sec || (sec && KEYS[i].sec && !strcmp(KEYS[i].sec, sec))) && !memcmp(KEYS[i].key, s, n))
             return &KEYS[i];
     return nullptr;
 }
