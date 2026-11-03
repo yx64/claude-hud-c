@@ -105,6 +105,8 @@ typedef struct {
     struct {
         us context, usage, warning, usage_warning, critical, model, project, git, git_branch, label, custom, bar_filled, bar_empty;
     } c;
+    us problem;  // the first value the config files hold that is ignored or changed, naming file and key
+    int nproblems;
 } Config;
 
 void load_config(Config *cfg, us claude_dir, us home);
