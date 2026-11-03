@@ -148,9 +148,9 @@ void count_configs(Ctx *ctx) {
     int md = exists(path_join(cd, US("CLAUDE.md")));
     int rules = rules_in(path_join(cd, US("rules")));
     int hooks = key_count(jget(user, "hooks"));
+    // logicPaths: a project only for a cwd that is an absolute path.
     jv cwdv = sget(ctx, "cwd", nullptr);
-    if (jtruthy(cwdv) && !jis_str(cwdv)) UNSUPPORTED("non-string cwd");
-    if (jtruthy(cwdv) && jis_str(cwdv)) {
+    if (jis_str(cwdv) && path_is_absolute(jstr(cwdv))) {
         us cwd = jstr(cwdv);
         us pd = path_join(cwd, US(".claude"));
         // When the project's .claude is the user config dir, its files were counted above.

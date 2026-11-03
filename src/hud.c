@@ -134,7 +134,8 @@ static void run(const char *buf, size_t n, sb *out) {
     Transcript tr = {.session_start = NAN, .last_assistant_at = NAN};
     if (needs_transcript(&cfg, root)) {
         jv tp = jget(root, "transcript_path");
-        if (jis_str(tp)) {
+        // The launcher grants the logic a transcript only by an absolute path.
+        if (jis_str(tp) && path_is_absolute(jstr(tp))) {
             parse_transcript(jstr(tp), ctx.now, &tr);
             // Only the agents the line will show, since each lookup opens a file.
             if (cfg.d.show_agents && cfg.d.show_agent_effort) {
